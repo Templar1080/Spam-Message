@@ -1,0 +1,3 @@
+-keepattributes *Annotation*
+-keep class ir.parsshield.smsblocker.data.** { *; }
+-dontwarn kotlin.**

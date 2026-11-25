@@ -1,0 +1,71 @@
+name: Build ParsShield Android APK
+
+on:
+  push:
+    branches:
+      - main
+      - 'arena/**'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Test & Build Signed Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Gradle 8.10.2
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+
+      - name: Run Iranian SMS Classifier Unit Tests
+        run: gradle testDebugUnitTest --stacktrace
+
+      - name: Build Signed Release & Debug APKs
+        run: |
+          gradle assembleRelease assembleDebug --stacktrace
+          mkdir -p dist-apk
+          cp app/build/outputs/apk/release/app-release.apk dist-apk/ParsShield-v1.0.0-signed.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist-apk/ParsShield-v1.0.0-debug.apk
+
+      - name: Upload Installable Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParsShield-Android-APK
+          path: dist-apk/ParsShield-v1.0.0-signed.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ParsShield-Android-Debug-APK
+          path: dist-apk/ParsShield-v1.0.0-debug.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Publish GitHub Release on Tag
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist-apk/ParsShield-v1.0.0-signed.apk
+            dist-apk/ParsShield-v1.0.0-debug.apk
+          generate_release_notes: true

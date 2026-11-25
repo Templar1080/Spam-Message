@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">ParsShield</string>
+    <string name="notification_shield_label">ParsShield SMS Spam Filter</string>
+</resources>
