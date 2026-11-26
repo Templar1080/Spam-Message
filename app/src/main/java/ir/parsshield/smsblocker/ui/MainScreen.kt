@@ -314,18 +314,19 @@ fun MainScreen(
                     }
                 }
             }
+        }
 
-            if (composeDialogOpen) {
-                ComposeSmsDialog(
-                    initialRecipient = initialComposeRecipient.orEmpty(),
-                    onDismiss = { composeDialogOpen = false },
-                    onSend = { dest, text ->
-                        viewModel.sendSms(dest, text) { success ->
-                            if (success) composeDialogOpen = false
-                        }
+        if (composeDialogOpen) {
+            ComposeSmsDialog(
+                initialRecipient = initialComposeRecipient.orEmpty(),
+                onDismiss = { composeDialogOpen = false },
+                onSend = { dest, text ->
+                    viewModel.sendSms(dest, text) { success ->
+                        if (success) composeDialogOpen = false
                     }
-                )
-            }
+                }
+            )
+        }
         }
     }
 }
