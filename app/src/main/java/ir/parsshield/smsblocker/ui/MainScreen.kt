@@ -107,7 +107,6 @@ fun MainScreen(
     }
 
     CompositionLocalProvider(LocalLayoutDirection provides layoutDir) {
-        // Full-screen Conversation Thread Detail when a thread is opened
         val activeThreadAddr = openThreadAddress
         if (activeThreadAddr != null) {
             val threadMsgs = remember(allowedMessages, activeThreadAddr) {
@@ -137,10 +136,8 @@ fun MainScreen(
                     openThreadAddress = null
                 }
             )
-            return@CompositionLocalProvider
-        }
-
-        Scaffold(
+        } else {
+            Scaffold(
             topBar = {
                 TopAppBar(
                     title = {
@@ -317,18 +314,18 @@ fun MainScreen(
                     }
                 }
             }
-        }
 
-        if (composeDialogOpen) {
-            ComposeSmsDialog(
-                initialRecipient = initialComposeRecipient.orEmpty(),
-                onDismiss = { composeDialogOpen = false },
-                onSend = { dest, text ->
-                    viewModel.sendSms(dest, text) { success ->
-                        if (success) composeDialogOpen = false
+            if (composeDialogOpen) {
+                ComposeSmsDialog(
+                    initialRecipient = initialComposeRecipient.orEmpty(),
+                    onDismiss = { composeDialogOpen = false },
+                    onSend = { dest, text ->
+                        viewModel.sendSms(dest, text) { success ->
+                            if (success) composeDialogOpen = false
+                        }
                     }
-                }
-            )
+                )
+            }
         }
     }
 }

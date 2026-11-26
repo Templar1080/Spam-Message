@@ -25,7 +25,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '17'
@@ -36,20 +36,31 @@ jobs:
           gradle-version: '8.10.2'
 
       - name: Run Iranian SMS Classifier Unit Tests
-        run: gradle testDebugUnitTest --stacktrace
+        run: |
+          set -o pipefail
+          if ! gradle testDebugUnitTest --info 2>&1 | tee gradle-test.log; then
+            MSG=$(grep -E "e: |FAILED|AssertionError|expected|FAILURE:|What went wrong" -A 3 gradle-test.log | tail -n 25 | tr '\n' ' ')
+            echo "::error::$MSG"
+            exit 1
+          fi
 
       - name: Build Signed Release & Debug APKs
         run: |
-          gradle assembleRelease assembleDebug --stacktrace
+          set -o pipefail
+          if ! gradle assembleRelease assembleDebug 2>&1 | tee gradle-build.log; then
+            MSG=$(grep -E "e: |FAILURE:|What went wrong|Error:" -A 3 gradle-build.log | tail -n 25 | tr '\n' ' ')
+            echo "::error::$MSG"
+            exit 1
+          fi
           mkdir -p dist-apk
-          cp app/build/outputs/apk/release/app-release.apk dist-apk/ParsShield-v1.0.0-signed.apk
-          cp app/build/outputs/apk/debug/app-debug.apk dist-apk/ParsShield-v1.0.0-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk dist-apk/ParsShield-v2.0.0-signed.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist-apk/ParsShield-v2.0.0-debug.apk
 
       - name: Upload Installable Android APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ParsShield-Android-APK
-          path: dist-apk/ParsShield-v1.0.0-signed.apk
+          path: dist-apk/ParsShield-v2.0.0-signed.apk
           if-no-files-found: error
           retention-days: 90
 
@@ -57,7 +68,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ParsShield-Android-Debug-APK
-          path: dist-apk/ParsShield-v1.0.0-debug.apk
+          path: dist-apk/ParsShield-v2.0.0-debug.apk
           if-no-files-found: warn
           retention-days: 30
 
@@ -66,6 +77,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist-apk/ParsShield-v1.0.0-signed.apk
-            dist-apk/ParsShield-v1.0.0-debug.apk
+            dist-apk/ParsShield-v2.0.0-signed.apk
+            dist-apk/ParsShield-v2.0.0-debug.apk
           generate_release_notes: true
