@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  analyzeSender,
   canonicalizeThreadAddress,
   classifyIranSms,
   normalizeSmsText,
@@ -11,10 +12,11 @@ describe('IranSmsClassifier — Normalization & Thread Canonicalization', () => 
     expect(normalizeSmsText(raw)).toBe('تخفیف ویژه 50٪ کاشت مو ها 09123456789');
   });
 
-  it('merges +98912, 0912, and 0098912 into the exact same thread address', () => {
+  it('merges +98912, 0912, and 0098912 into the exact same thread address and strips Samsung BiDi marks', () => {
     expect(canonicalizeThreadAddress('09121234567')).toBe('+989121234567');
     expect(canonicalizeThreadAddress('+98 912 123 4567')).toBe('+989121234567');
     expect(canonicalizeThreadAddress('00989121234567')).toBe('+989121234567');
+    expect(analyzeSender('\u2068+98 5000 12345\u2069').senderType).toBe('IRAN_BULK_SHORTCODE');
   });
 });
 

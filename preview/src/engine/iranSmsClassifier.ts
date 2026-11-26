@@ -90,9 +90,11 @@ export function normalizeSmsText(input: string): string {
  * Canonicalizes Iranian phone numbers so "+989121234567", "09121234567", and "989121234567"
  * group into the exact same SMS conversation thread.
  */
+const STRIP_SENDER_FORMATTING_REGEX = /[\s()\-\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g;
+
 export function canonicalizeThreadAddress(rawSender: string): string {
-  const cleaned = normalizeDigits(rawSender).replace(/[\s()-]/g, '').trim();
-  if (/[A-Za-z]/.test(cleaned)) return cleaned.toUpperCase();
+  const cleaned = normalizeDigits(rawSender).replace(STRIP_SENDER_FORMATTING_REGEX, '').trim();
+  if (/[A-Za-z\u0600-\u06FF]/.test(cleaned)) return cleaned.toUpperCase();
   const noPlus = cleaned.replace(/^\+/, '');
   if (/^00989\d{9}$/.test(noPlus)) return `+98${noPlus.slice(4)}`;
   if (/^989\d{9}$/.test(noPlus)) return `+${noPlus}`;
@@ -182,7 +184,7 @@ export interface SenderAnalysis {
 }
 
 export function analyzeSender(rawSender: string, isSavedContact = false): SenderAnalysis {
-  const cleaned = normalizeDigits(rawSender).replace(/[\s()-]/g, '').trim();
+  const cleaned = normalizeDigits(rawSender).replace(STRIP_SENDER_FORMATTING_REGEX, '').trim();
   const upper = cleaned.toUpperCase();
 
   if (isSavedContact) {
@@ -193,7 +195,7 @@ export function analyzeSender(rawSender: string, isSavedContact = false): Sender
     return { senderType: 'KNOWN_BANK_OR_GOV', cleanedSender: upper, bulkPrefix: null };
   }
 
-  if (CARRIER_SENDERS.has(upper)) {
+  if (CARRIER_SENDERS.has(upper) || upper.includes('IRANCELL') || upper.includes('HAMRAHAVAL')) {
     return { senderType: 'CARRIER_SENDER', cleanedSender: upper, bulkPrefix: null };
   }
 
@@ -201,13 +203,13 @@ export function analyzeSender(rawSender: string, isSavedContact = false): Sender
   let national = numericOnly;
   if (numericOnly.startsWith('0098') && numericOnly.length > 6) {
     national = numericOnly.slice(4);
-  } else if (numericOnly.startsWith('98') && numericOnly.length >= 8) {
+  } else if (numericOnly.startsWith('98') && numericOnly.length >= 6) {
     national = numericOnly.slice(2);
   } else if (numericOnly.startsWith('0') && numericOnly.length >= 10) {
     national = numericOnly.slice(1);
   }
 
-  const bulkMatch = /^(1000|2000|3000|5000|9000)\d{2,11}$/.exec(national);
+  const bulkMatch = /^(1000|2000|3000|4000|5000|9000)\d{1,12}$/.exec(national);
   if (bulkMatch) {
     return {
       senderType: 'IRAN_BULK_SHORTCODE',
@@ -224,7 +226,15 @@ export function analyzeSender(rawSender: string, isSavedContact = false): Sender
     return { senderType: 'IRAN_LANDLINE_PANEL', cleanedSender: cleaned, bulkPrefix: null };
   }
 
-  if (/[A-Z]/i.test(cleaned)) {
+  if (/^\d{3,8}$/.test(national)) {
+    return {
+      senderType: 'IRAN_BULK_SHORTCODE',
+      cleanedSender: cleaned,
+      bulkPrefix: national.slice(0, 4),
+    };
+  }
+
+  if (/[A-Za-z\u0600-\u06FF]/.test(cleaned)) {
     return { senderType: 'ALPHANUMERIC_BRAND', cleanedSender: upper, bulkPrefix: null };
   }
 

@@ -1,31 +1,161 @@
-# ParsShield — Zero-Notification Iran SMS Spam & Ad Blocker for Android
+# 🛡️ پارس‌شیلد (`ParsShield`) — سپر هوشمند مسدودساز پیامک‌های تبلیغاتی و فیشینگ ایران برای اندروید
 
-**ParsShield** (`پارس‌شیلد`) is a 100% offline native Android SMS app (**Kotlin + Jetpack Compose, Material 3**) engineered for Iran. By operating as Android's **Pre-Notification `SMS_DELIVER` Radio Interceptor (`RoleManager.ROLE_SMS`)**, it blocks promotional blasts, beauty/dental clinic ads, northern villa spam, betting/casino messages, and fake judicial (`ابلاغیه ثنا`) phishing links **in `< 2ms` before Android ever creates a notification, sound, vibration, or lock-screen wake**—while **never** blocking OTP verification codes or Shaparak Dynamic PINs (`رمز پویا`).
+[![Build ParsShield Android APK](https://github.com/Templar1080/Spam-Message/actions/workflows/android-apk.yml/badge.svg?branch=arena%2F3e0c9953-spam-message)](https://github.com/Templar1080/Spam-Message/actions/workflows/android-apk.yml)
+![Platform](https://img.shields.io/badge/Android-8.0%20--%2015%20(API%2026--35)-10B981?logo=android&logoColor=white)
+![Kotlin](https://img.shields.io/badge/Kotlin-2.0%20%7C%20Jetpack%20Compose-7F52FF?logo=kotlin&logoColor=white)
+![Privacy](https://img.shields.io/badge/Privacy-100%25%20Offline%20(No%20INTERNET%20Permission)-059669)
 
----
-
-## How Zero-Notification Instant Blocking Works
-
-Unlike notification-listener apps (which let your phone ring and flash a banner for a split second before swiping it away), ParsShield intercepts SMS directly at Android's **Telephony radio layer (`android.provider.Telephony.SMS_DELIVER`)**:
-
-1. **Exclusive Pre-Notification Interception**:
-   When ParsShield is set as your **Default SMS App**, Google Messages / Samsung Messages / Xiaomi Messaging never receive `SMS_DELIVER` and never ring.
-2. **Sub-2ms On-Device Classification**:
-   - **Advertisement / Spam / Phishing**: `NotificationManager` is **never called**—zero notification, zero chime, zero vibration, zero screen wake, and zero clutter in Android's system SMS inbox. Enable **Vaporize Mode (`حذف آنی در حافظه`)** to drop spam in RAM without even storing it in the Blocked vault!
-   - **OTP / `رمز پویا` / Bank / Personal SMS**: Delivered immediately with auto-clipboard OTP copy, **1-Tap `Copy <OTP>`** in the notification shade, full **Conversation Threads**, chat bubble history, and **Inline Direct Reply (`RemoteInput`)**.
-3. **Zero-Tolerance Commercial Panel Filter (`5000` / `2000` / `3000` / `1000` / `9000` / `021`)**:
-   Blocks **all** messages from bulk commercial panels and landline panels *unless* they match a verified OTP, Bank/Shaparak transaction, essential service update, or your whitelist—catching even sneaky ads that avoid words like `"تخفیف"` or `"لغو11"`.
+**پارس‌شیلد (`ParsShield v2.2.0`)** یک اپلیکیشن بومی اندروید (**Kotlin + Jetpack Compose / Material 3**) است که به‌طور اختصاصی برای اکوسیستم پیامکی ایران طراحی شده تا پیامک‌های تبلیغاتی، کلینیک‌های زیبایی، پیش‌فروش ویلا، سایت‌های شرط‌بندی/کازینو و لینک‌های فیشینگ جعلی «ابلاغیه ثنا» را **بدون هیچ نوتیفیکیشن، صدا، ویبره یا روشن شدن صفحه مسدود کند** — در حالی که **هرگز و تحت هیچ شرایطی کدهای تایید (`OTP`)، رمز پویا (`شاپرک`) و تراکنش‌های بانکی را بلاک نمی‌کند.**
 
 ---
 
-## Privacy Guarantee: Zero Internet Permission
+## ✨ چرا پارس‌شیلد متفاوت است؟
 
-`android.permission.INTERNET` is **intentionally omitted** from `AndroidManifest.xml`. Android's OS sandbox guarantees your OTP codes, Shaparak `رمز پویا`, bank balances, and personal chats can **never** leave your phone.
+در ایران، دیجی‌کالا، اسنپ، بانک‌ها و سامانه‌های دولتی از **همان سرشماره‌های خدماتی/انبوه (`1000`، `2000`، `3000`، `5000`، `9000`)** استفاده می‌کنند که پنل‌های تبلیغاتی استفاده می‌کنند و حتی در انتهای بسیاری از پیامک‌های کد تایید عبارت **`لغو11`** اضافه می‌شود!
+
+مسدودسازهای معمولی یا بر اساس پیش‌شماره کل سرشماره را می‌بندند (که باعث سوختن کدهای تایید می‌شود) و یا دیر عمل می‌کنند و نوتیفیکیشن تبلیغاتی نمایش داده می‌شود. **پارس‌شیلد هر دو مشکل را به شکل ریشه‌ای حل کرده است:**
+
+| قابلیت | توضیح فنی |
+|---|---|
+| **محافظت ۱۰۰٪ از کدهای تایید و رمز پویا** | تشخیص چندلایه کدهای ۴ تا ۸ رقمی، `رمز پویا`، سجام، پنجره ملی دولت هوشمند، فرمت‌های انگلیسی/فینگلیش و `WebOTP` حتی در صورت وجود `لغو11` یا بلاک بودن سرشماره |
+| **صفر نوتیفیکیشن برای تبلیغات** | پشتیبانی هم‌زمان از **سپر ویژه سامسونگ/شیائومی (بدون تغییر پیام‌رسان پیش‌فرض)** و **رهگیری سطح رادیویی `SMS_DELIVER`** |
+| **پشتیبانی کامل دو سیم‌کارت (`SIM 1 / SIM 2`)** | حفظ برنامه پیامک فابریک دو سیم‌کارته گوشی در روش ۱ + انتخابگر اختصاصی سیم‌کارت ۱ و ۲ و مخاطبین در داخل خود پارس‌شیلد در روش ۲ |
+| **مقصدشناسی و نرمال‌سازی متن فارسی** | حذف کشیده‌گویی اسپمرها (`تـخـفـیـف` ← `تخفیف`)، یکسان‌سازی ی/ک عربی و فارسی (`ي`/`ك`)، ارقام فارسی/عربی و حذف کاراکترهای مخفی `BiDi` سامسونگ |
+| **سپر ضد فیشینگ «ابلاغیه ثنا» و `.apk`** | مسدودسازی آنی لینک‌های جعلی قضایی (خارج از دامنه رسمی `adliran.ir`) و لینک‌های بدافزار بانکی |
+| **حریم خصوصی مطلق (بدون دسترسی اینترنت)** | مجوز `android.permission.INTERNET` به طور کامل از `AndroidManifest.xml` حذف شده است؛ هیچ داده‌ای تحت هیچ شرایطی از گوشی خارج نمی‌شود |
 
 ---
 
-## Install on Your Android Phone (Android 8.0 – 15)
+## 📥 دانلود و نصب نسخه اندروید (`APK`)
 
-1. Open the **Actions** tab of this GitHub repository → select the latest **Build ParsShield Android APK** run → download **`ParsShield-Android-APK`** (`ParsShield-v1.0.0-signed.apk`).
-2. Install the APK, open **ParsShield**, and tap **فعال‌سازی بلاک آنی (Set as Default SMS App)**.
-3. Switch between **فارسی (RTL)** and **English** anytime in 1 tap from the top bar.
+1. وارد بخش **[GitHub Actions — Build ParsShield Android APK](https://github.com/Templar1080/Spam-Message/actions/workflows/android-apk.yml)** شوید و آخرین بیلد سبز (✅) را باز کنید.
+2. در پایین صفحه در قسمت **Artifacts**، فقط فایل **`ParsShield-Android-APK`** را دانلود کنید *(نیازی به دانلود نسخه `Debug` نیست)*.
+3. فایل زیپ را خارج (`Extract`) کرده و **`ParsShield-v2.2.0-signed.apk`** (حجم ~۱.۲ مگابایت) را روی گوشی اندروید ۸ تا ۱۵ نصب کنید.
+   - *نکته:* در صورت مشاهده پیام Google Play Protect، گزینه **More details (جزئیات بیشتر)** و سپس **Install anyway (نصب در هر صورت)** را بزنید.
+
+---
+
+## 🚀 دو روش راه‌اندازی (به انتخاب شما)
+
+پارس‌شیلد هر دو سناریوی کاربری را پشتیبانی می‌کند:
+
+### روش ۱ (پیشنهادی برای گوشی‌های سامسونگ `One UI` و دو سیم‌کارت): حفظ پیام‌رسان اصلی گوشی + حذف آنی نوتیف تبلیغات
+
+در این روش، برنامه **Messages فابریک گوشی شما همچنان برنامه پیش‌فرض باقی می‌ماند** تا ارسال پیامک و تغییر سیم‌کارت ۱ و ۲ دقیقاً در همان محیط همیشگی گوشی انجام شود:
+
+1. **رفع محدودیت اندروید ۱۳+ (در صورت خاکستری بودن دسترسی اعلان):**
+   داخل پارس‌شیلد روی دکمه **«۱. باز کردن اطلاعات برنامه»** بزنید ← در صفحه بازشده روی منوی **۳ نقطه بالا (`⋮`)** بزنید ← **«مجاز کردن تنظیمات محدودشده / Allow restricted settings»** را فعال کنید.
+2. **فعال‌سازی سپر اعلان پارس‌شیلد:**
+   روی دکمه **«۲. روشن کردن دسترسی به اعلان‌ها»** بزنید و سوییچ **ParsShield** را روشن کنید تا وضعیت سپر سبز شود (`✓`).
+3. **گذاشتن پیامک سامسونگ روی حالت «بی‌صدا / Silent»:**
+   در گوشی‌های سامسونگ، سوییچ اصلی بالای صفحه اعلانِ برنامه پیامک پیش‌فرض قفل (خاکستری) است؛ اصلاً نیازی به خاموش کردن آن نیست! روی دکمه **«۳. گذاشتن پیامک سامسونگ روی حالت بی‌صدا»** بزنید، گزینه **`بی‌صدا / Silent`** را انتخاب کنید و تیک **`پاپ‌آپ / Pop-up`** را بردارید *(اگر بخش `Notification categories / دسته‌بندی‌های اعلان` فعال است، دسته `Incoming messages / پیام‌های جدید` را هم روی `Silent` بگذارید)*.
+
+> **نتیجه در روش ۱:**
+> - **پیامک تبلیغاتی / فیشینگ:** برنامه سامسونگ بی‌صداست و پارس‌شیلد در **کمتر از ۱ میلی‌ثانیه در RAM** نوتیف بی‌صدای تبلیغاتی را هم پاک (`cancelNotification`) می‌کند ← **صفر صدا، صفر بنر و صفر نوتیفیکیشن در پنل بالا!**
+> - **کد تایید (`OTP`)، رمز پویا، بانک و پیام شخصی:** پارس‌شیلد نوتیف بی‌صدای تکراری را برمی‌دارد و فوراً **نوتیفیکیشن باصدا و پاپ‌آپ** را به همراه دکمه تک‌لمسی **`کپی کد`** نمایش می‌دهد؛ با ضربه روی نوتیفیکیشن هم **مستقیماً صفحه همان گفتگو داخل برنامه Messages اصلی سامسونگ باز می‌شود!**
+
+---
+
+### روش ۲: انتخاب پارس‌شیلد به عنوان برنامه پیش‌فرض پیامک (`SMS_DELIVER Radio Interceptor`)
+
+اگر می‌خواهید پیامک‌های تبلیغاتی **حتی وارد لیست دیتابیس پیامک‌های گوشی هم نشوند**:
+
+- از تب **سپر (`Shield`)** گزینه **«انتخاب پارس‌شیلد به عنوان پیامک پیش‌فرض»** را بزنید.
+- پیامک‌ها در لایه تله‌فونی (`SMS_DELIVER` با اولویت `999`) قبل از ساخته شدن هرگونه نوتیفیکیشن رهگیری می‌شوند.
+- مجهز به **انتخاب سیم‌کارت ۱ و سیم‌کارت ۲ (`Dual-SIM`)**، نمایش اپراتور (`همراه اول` / `ایرانسل` / `رایتل`)، انتخاب شماره از **مخاطبین**، پاسخ مستقیم از داخل نوتیفیکیشن (`Direct Reply`) و حالت **حذف آنی در حافظه (`Vaporize Mode`)** برای دور ریختن تبلیغات بدون ذخیره در قرنطینه.
+
+---
+
+## 🧠 معماری موتور تشخیص ۷ لایه آفلاین (`IranSmsClassifier`)
+
+موتور دسته‌بندی به صورت قطعی (`Deterministic`) و در کمتر از **۱ میلی‌ثانیه** پیامک‌ها را از ۷ لایه ترتیبی عبور می‌دهد:
+
+```text
+پیامک ورودی ──► نرمال‌سازی فارسی (حذف کشیده، یکسان‌سازی ی/ک و ارقام، حذف BiDi)
+  │
+  ├─ لایه ۱: مخاطبین ذخیره‌شده (Contacts) و قوانین لیست سفید کاربر ──────────► [مجاز - PERSONAL]
+  ├─ لایه ۲: سپر ضد فیشینگ (ابلاغیه ثنا جعلی، فایل .apk، لینک‌های بدافزار) ──► [مسدود - PHISHING]
+  ├─ لایه ۳: محافظت مطلق کدهای تایید (OTP، رمز پویا، سجام، WebOTP، کد کوتاه) ► [مجاز + کپی کد - OTP]
+  ├─ لایه ۴: قوانین لیست سیاه دستی کاربر (کلمه کلیدی، سرشماره، Regex) ───────► [مسدود - SPAM_AD]
+  ├─ لایه ۵: تراکنش‌های بانکی/شاپرک و پیام‌های خدماتی ضروری (پست، پرواز، اسنپ) ► [مجاز - BANK / SERVICE]
+  ├─ لایه ۶: امتیازدهی تبلیغات + فیلتر سخت‌گیرانه پنل‌های انبوه (5000/2000/021) ► [مسدود - SPAM_AD]
+  └─ لایه ۷: پیام‌های گفتگوی عادی از شماره‌های شخصی ─────────────────────────► [مجاز - PERSONAL]
+```
+
+### نمونه‌های واقعی نحوه تصمیم‌گیری موتور
+
+| فرستنده | متن پیامک | نتیجه پارس‌شیلد |
+|---|---|---|
+| `985000491234` | `فروشگاه بانی‌مد - کد ورود شما: ۷۳۹۱۵ لغو11` | ✅ **مجاز (`OTP`)** — استخراج کد `73915` با وجود سرشماره ۵۰۰۰ و `لغو11` |
+| `9810008522` | `بانک ملت / خرید اینترنتی / رمز پویا: ۸۴۹۲۰۱۵` | ✅ **مجاز (`OTP`)** — کپی خودکار رمز پویا `8492015` |
+| `+989198765432` | `ابلاغیه قضایی سامانه ثنا ثبت شد، مشاهده: http://sana-adliran-gov.top/app.apk` | 🛑 **مسدود آنی (`PHISHING`)** — دامنه جعلی خارج از `adliran.ir` + فایل `.apk` |
+| `98500041234` | `تـخـفـیـف ۵۰٪ کاشت مو و لیزر در کلینیک ونک! ارسال عدد ۱ لغو۱۱` | 🛑 **مسدود آنی بدون نوتیف (`SPAM_AD`)** |
+| `98500012345` | `گروه صنعتی پارس استیل، تولید ورق صنعتی در تهران. تلفن: ۸۸۷۷۶۶۵۵` | 🛑 **مسدود آنی بدون نوتیف (`SPAM_AD`)** — شکار تبلیغ بدون کلمه تخفیف توسط فیلتر خطوط تجاری |
+
+---
+
+## 🔒 تضمین امنیت و حریم خصوصی (`Zero Internet Permission`)
+
+پارس‌شیلد به کدهای ورود و پیامک‌های بانکی حساس دسترسی دارد؛ به همین دلیل به جای وعده متنی، محدودیت در **سطح سیستم‌عامل اندروید** اعمال شده است:
+- در فایل [`app/src/main/AndroidManifest.xml`](app/src/main/AndroidManifest.xml) **هیچ مجوز `android.permission.INTERNET` وجود ندارد**.
+- بعد از نصب روی گوشی نیز در بخش **Settings → Apps → ParsShield → Permissions** می‌توانید مشاهده کنید که برنامه فاقد دسترسی شبکه است و هسته لینوکس اندروید ایجاد هرگونه سوکت شبکه را برای آن مسدود می‌کند.
+
+---
+
+## 📂 ساختار مخزن (`Project Structure`)
+
+```text
+Spam-Message/
+├── app/                                      # اپلیکیشن بومی اندروید (Kotlin + Jetpack Compose)
+│   ├── build.gradle.kts                      # تنظیمات Android SDK 35، Room KSP، R8 و امضای APK
+│   └── src/
+│       ├── main/
+│       │   ├── AndroidManifest.xml           # مانیفست ۱۰۰٪ آفلاین (بدون مجوز INTERNET)
+│       │   └── java/ir/parsshield/smsblocker/
+│       │       ├── engine/                   # موتور نرمال‌ساز فارسی، تحلیل سرشماره و دسته‌بند ۷ لایه
+│       │       ├── data/                     # دیتابیس Room (v3)، تنظیمات DataStore و مدیریت دو سیم‌کارت
+│       │       ├── service/                  # سرویس حذف نوتیف سامسونگ، گیرنده SMS_DELIVER و SimCardHelper
+│       │       └── ui/                       # رابط کاربری Material 3 (فارسی راست‌به‌چپ + انگلیسی)
+│       └── test/                             # تست‌های واحد JUnit 4 موتور تشخیص پیامک ایران
+├── preview/                                  # شبیه‌ساز تعاملی تحت وب و تست‌بنچ زنده (React + TypeScript + Vitest)
+│   └── src/
+│       ├── engine/                           # نسخه همتا (1:1) موتور دسته‌بندی به زبان TypeScript + ۴۶ تست واحد
+│       └── data/                             # دیتاست نمونه پیامک‌های واقعی ایران (OTP، بانک، اسپم، فیشینگ)
+├── .github/workflows/android-apk.yml         # خط لوله CI/CD اجرای تست‌های JUnit و ساخت خودکار Signed APK
+├── CHANGELOG.md                              # تاریخچه نسخه‌ها و تغییرات معماری
+└── README.md                                 # مستندات جامع پروژه
+```
+
+---
+
+## 🛠️ کامپایل و اجرای تست‌ها از سورس‌کد (`Build from Source`)
+
+### ۱. ساخت اپلیکیشن اندروید (`Gradle 8.10 + JDK 17`)
+```bash
+# اجرای تست‌های واحد موتور تشخیص پیامک ایران (JUnit)
+gradle testDebugUnitTest
+
+# ساخت نسخه نهایی امضاشده (Release APK) و دیباگ
+gradle assembleRelease assembleDebug
+# خروجی در مسیر: app/build/outputs/apk/release/app-release.apk
+```
+
+### ۲. اجرای شبیه‌ساز تعاملی وب و تست‌های Vitest (`Node.js 20+`)
+```bash
+cd preview
+npm install
+npm test          # اجرای ۴۶ تست واحد روی پیامک‌های واقعی ایران
+npm run dev       # اجرای شبیه‌ساز زنده روی پورت 5173
+```
+
+---
+
+## 🌐 English Summary
+
+**ParsShield (`v2.2.0`)** is a 100% offline Android SMS spam & phishing blocker engineered specifically for Iran's telecom ecosystem (**Kotlin 2.0 + Jetpack Compose Material 3**, Android 8.0–15).
+
+- **Zero-False-Positive OTP Protection**: Safely allows all verification codes, Shaparak Dynamic PINs (`رمز پویا`), Sejam/Gov codes, Finglish/English OTPs, and `WebOTP` messages—even when delivered over shared `1000/2000/3000/5000/9000` gateways with `لغو11` opt-out footers.
+- **Samsung One UI & Dual-SIM Friendly**:
+  - **Mode 1 (Samsung / Stock SMS Companion Shield)**: Keep Samsung Messages or Google Messages as your Default SMS App for native Dual-SIM (`SIM 1 / SIM 2`) messaging. Set the stock SMS app to `Silent` (no pop-up); `SmsNotificationShieldService` erases ad notifications in `<1ms` in RAM while relaying loud alerts + 1-tap `Copy OTP` + original `PendingIntent` deep-links for legitimate messages.
+  - **Mode 2 (Pre-Notification `SMS_DELIVER` Default SMS App)**: Intercepts SMS at the radio layer before any notification or inbox entry is created, complete with built-in Dual-SIM (`SIM 1 / SIM 2`) selector, Contact Picker, inline `RemoteInput` reply, and RAM-only **Vaporize Mode**.
+- **Provable Offline Privacy**: Zero `android.permission.INTERNET` in `AndroidManifest.xml`.
