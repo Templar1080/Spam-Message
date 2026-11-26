@@ -19,12 +19,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Inbox
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -63,11 +64,11 @@ fun ConversationsScreen(
     threads: List<ConversationThread>,
     persianUi: Boolean,
     isDefaultSmsApp: Boolean,
-    hasSmsPermissions: Boolean,
+    isNotificationListenerEnabled: Boolean,
     isScanning: Boolean,
-    onRequestPermissions: () -> Unit,
+    onOpenAppInfoForRestrictedSettings: () -> Unit,
+    onOpenNotificationListenerSettings: () -> Unit,
     onOpenStockSmsNotificationSettings: () -> Unit,
-    onActivateDefaultSms: () -> Unit,
     onScanInbox: () -> Unit,
     onOpenThread: (ConversationThread) -> Unit,
     onCopyOtp: (String) -> Unit
@@ -92,45 +93,70 @@ fun ConversationsScreen(
     ) {
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Quick Setup Guide when NOT Default SMS App (Smart Relay Mode vs Default Dual-SIM Mode)
+        // Samsung / Stock SMS Notification Shield Banner when not Default SMS App
         if (!isDefaultSmsApp) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFF064E3B))
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isNotificationListenerEnabled) Color(0xFF064E3B)
+                    else Color(0xFF7F1D1D)
+                )
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Shield,
+                            imageVector = if (isNotificationListenerEnabled) Icons.Default.CheckCircle
+                            else Icons.Default.Warning,
                             contentDescription = null,
-                            tint = Color(0xFF34D399)
+                            tint = if (isNotificationListenerEnabled) Color(0xFF34D399)
+                            else Color(0xFFFCA5A5)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (persianUi) "حالت رله هوشمند: حفظ پیام‌رسان اصلی گوشی + صفر نوتیف تبلیغاتی!"
-                            else "Smart Relay Mode: Keep Your Stock SMS App + Zero Ad Notifications!",
+                            text = if (isNotificationListenerEnabled) {
+                                if (persianUi) "سپر حذف نوتیف فعال است ✓ (گام آخر برای سامسونگ ↓)"
+                                else "Notification Shield Active ✓ (Final Samsung Step ↓)"
+                            } else {
+                                if (persianUi) "نیاز به فعال‌سازی «دسترسی به اعلان‌ها» برای حذف نوتیف تبلیغات!"
+                                else "Enable 'Notification Access' to Block Ad Notifications!"
+                            },
                             color = Color.White,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 14.sp
+                            fontSize = 13.sp
                         )
                     }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = if (persianUi) {
-                            "می‌توانید برنامه پیامک اصلی گوشی‌تان را برای ارسال راحت دو سیم‌کارته نگه دارید! کافیست نوتیف برنامه پیامک اصلی گوشی را خاموش کنید؛ از این پس پارس‌شیلد تبلیغات را بی‌صدا رها کرده و فقط برای کد تایید و پیام‌های مهم نوتیفیکیشن می‌دهد."
-                        } else {
-                            "Keep your stock SMS app for native Dual-SIM messaging! Just mute notifications on your stock SMS app once—ParsShield will stay silent on ads and notify you ONLY for OTPs, bank alerts & personal chats."
-                        },
-                        color = Color(0xFFD1FAE5),
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
 
-                    if (!hasSmsPermissions) {
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    if (!isNotificationListenerEnabled) {
+                        Text(
+                            text = if (persianUi) {
+                                "۱. اگر در گوشی سامسونگ سوییچ پارس‌شیلد خاکستری/محدود بود، ابتدا دکمه اول را بزنید، از منوی ۳ نقطه بالا (⋮) گزینه «مجاز کردن تنظیمات محدودشده / Allow restricted settings» را بزنید.\n" +
+                                    "۲. سپس دکمه دوم را بزنید و تیک پارس‌شیلد را روشن کنید."
+                            } else {
+                                "1. On Samsung Android 13+, if ParsShield is grayed out in Notification Access, tap Button 1 -> ⋮ (top right) -> 'Allow restricted settings'.\n" +
+                                    "2. Tap Button 2 and turn ON ParsShield."
+                            },
+                            color = Color(0xFFFECACA),
+                            fontSize = 11.5.sp,
+                            lineHeight = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedButton(
+                            onClick = onOpenAppInfoForRestrictedSettings,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = if (persianUi) "۱. باز کردن اطلاعات برنامه (رفع محدودیت ۳ نقطه ⋮)"
+                                else "1. Open App Info (⋮ -> Allow restricted settings)",
+                                color = Color.White,
+                                fontSize = 11.5.sp
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
                         Button(
-                            onClick = onRequestPermissions,
+                            onClick = onOpenNotificationListenerSettings,
                             modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF10B981),
@@ -138,21 +164,27 @@ fun ConversationsScreen(
                             )
                         ) {
                             Text(
-                                text = if (persianUi) "۱. اعطای دسترسی پیامک و دو سیم‌کارت به پارس‌شیلد"
-                                else "1. Grant SMS & Dual-SIM Permissions",
-                                fontWeight = FontWeight.Bold
+                                text = if (persianUi) "۲. روشن کردن «دسترسی به اعلان‌ها» برای پارس‌شیلد"
+                                else "2. Turn ON Notification Access for ParsShield",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.sp
                             )
                         }
-                        Spacer(modifier = Modifier.height(6.dp))
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
+                    } else {
+                        Text(
+                            text = if (persianUi) {
+                                "در سامسونگ سوییچ اصلی اعلان Messages قفل است (کاری به آن نداشته باشید)؛ فقط روی دکمه زیر بزنید و اعلان Messages سامسونگ را روی حالت «بی‌صدا / Silent» بگذارید و تیک «پاپ‌آپ / Pop-up» را بردارید تا هیچ تبلیغی صدا یا بنر ندهد!"
+                            } else {
+                                "On Samsung, leave the locked top switch ON—just set Messages to 'Silent' and uncheck 'Pop-up'! ParsShield will silently erase ads and ring ONLY for OTPs, bank & personal SMS."
+                            },
+                            color = Color(0xFFD1FAE5),
+                            fontSize = 11.5.sp,
+                            lineHeight = 18.sp
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
                         Button(
                             onClick = onOpenStockSmsNotificationSettings,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.fillMaxWidth(),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color(0xFF10B981),
                                 contentColor = Color(0xFF022C22)
@@ -165,28 +197,16 @@ fun ConversationsScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = if (persianUi) "خاموش کردن نوتیف پیامک گوشی"
-                                else "Mute Stock SMS Notifications",
+                                text = if (persianUi) "گذاشتن پیامک سامسونگ روی حالت «بی‌صدا / Silent»"
+                                else "Set Samsung Messages to 'Silent' (No Pop-up)",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp
-                            )
-                        }
-
-                        OutlinedButton(
-                            onClick = onActivateDefaultSms,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = if (persianUi) "یا پیش‌فرض کردن پارس‌شیلد"
-                                else "Or Set as Default SMS",
-                                color = Color(0xFFD1FAE5),
-                                fontSize = 11.sp
+                                fontSize = 12.sp
                             )
                         }
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
         }
 
         Row(
@@ -201,7 +221,7 @@ fun ConversationsScreen(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = if (persianUi) "پیام‌های شخصی، کد تایید، بانک و خدماتی (مجهز به سیم ۱ و ۲)"
+                    text = if (persianUi) "پیام‌های شخصی، کد تایید، بانک و خدماتی"
                     else "Personal chats, OTPs, Shaparak & Dual-SIM messaging",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant

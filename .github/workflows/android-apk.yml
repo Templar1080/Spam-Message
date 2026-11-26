@@ -53,14 +53,14 @@ jobs:
             exit 1
           fi
           mkdir -p dist-apk
-          cp app/build/outputs/apk/release/app-release.apk dist-apk/ParsShield-v2.1.0-signed.apk
-          cp app/build/outputs/apk/debug/app-debug.apk dist-apk/ParsShield-v2.1.0-debug.apk
+          cp app/build/outputs/apk/release/app-release.apk dist-apk/ParsShield-v2.2.0-signed.apk
+          cp app/build/outputs/apk/debug/app-debug.apk dist-apk/ParsShield-v2.2.0-debug.apk
 
       - name: Upload Installable Android APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: ParsShield-Android-APK
-          path: dist-apk/ParsShield-v2.1.0-signed.apk
+          path: dist-apk/ParsShield-v2.2.0-signed.apk
           if-no-files-found: error
           retention-days: 90
 
@@ -68,7 +68,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ParsShield-Android-Debug-APK
-          path: dist-apk/ParsShield-v2.1.0-debug.apk
+          path: dist-apk/ParsShield-v2.2.0-debug.apk
           if-no-files-found: warn
           retention-days: 30
 
@@ -77,6 +77,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist-apk/ParsShield-v2.1.0-signed.apk
-            dist-apk/ParsShield-v2.1.0-debug.apk
+            dist-apk/ParsShield-v2.2.0-signed.apk
+            dist-apk/ParsShield-v2.2.0-debug.apk
           generate_release_notes: true

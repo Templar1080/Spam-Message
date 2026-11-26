@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.SimCard
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -45,8 +46,11 @@ fun ProtectionSetupScreen(
     settings: ShieldSettings,
     simCards: List<SimCardInfo>,
     isDefaultSmsApp: Boolean,
+    isNotificationListenerEnabled: Boolean,
     hasSmsPermissions: Boolean,
     onRequestPermissions: () -> Unit,
+    onOpenAppInfoForRestrictedSettings: () -> Unit,
+    onOpenNotificationListenerSettings: () -> Unit,
     onOpenStockSmsNotificationSettings: () -> Unit,
     onOpenDefaultAppsSettings: () -> Unit,
     onRequestDefaultSmsRole: () -> Unit,
@@ -73,7 +77,7 @@ fun ProtectionSetupScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = if (fa) "تنظیمات سپر و دو سیم‌کارت" else "Shield & Dual-SIM Setup",
+                text = if (fa) "تنظیمات سپر سامسونگ و دو سیم‌کارت" else "Samsung Shield & Dual-SIM Setup",
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold
             )
@@ -83,11 +87,11 @@ fun ProtectionSetupScreen(
             )
         }
 
-        // METHOD 1: Keep Stock Dual-SIM SMS App + Smart Silent Relay (NO Default SMS Change Needed!)
+        // METHOD 1: Samsung One UI / Stock SMS Shield (Keep Samsung Messages + Zero Ad Notifications)
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
-                containerColor = if (!isDefaultSmsApp && hasSmsPermissions) {
+                containerColor = if (!isDefaultSmsApp && isNotificationListenerEnabled) {
                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.65f)
                 } else {
                     MaterialTheme.colorScheme.surfaceVariant
@@ -97,28 +101,40 @@ fun ProtectionSetupScreen(
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
-                        imageVector = Icons.Default.NotificationsOff,
+                        imageVector = if (isNotificationListenerEnabled) Icons.Default.CheckCircle
+                        else Icons.Default.Warning,
                         contentDescription = null,
-                        tint = Color(0xFF10B981)
+                        tint = if (isNotificationListenerEnabled) Color(0xFF10B981) else Color(0xFFF59E0B)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (fa) "روش ۱ (پیشنهادی): حفظ پیام‌رسان اصلی گوشی + رله نوتیف هوشمند"
-                        else "Method 1 (Recommended): Keep Stock SMS App + Smart Relay",
+                        text = if (fa) {
+                            if (isNotificationListenerEnabled) "روش ۱ (ویژه سامسونگ): سپر حذف نوتیف فعال است ✓"
+                            else "روش ۱ (ویژه سامسونگ): حفظ پیام‌رسان گوشی + حذف آنی نوتیف تبلیغات"
+                        } else {
+                            if (isNotificationListenerEnabled) "Method 1 (Samsung): Notification Shield Active ✓"
+                            else "Method 1 (Samsung): Keep Stock SMS + Instant Ad Canceler"
+                        },
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 14.sp
                     )
                 }
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = if (fa) {
-                        "برنامه پیامک فابریک گوشی خودتان (Samsung / Xiaomi / Google) را به عنوان پیش‌فرض نگه دارید تا ارسال پیام و تغییر سیم‌کارت دقیقاً مثل همیشه باشد!\n" +
-                            "فقط نوتیف برنامه پیامک اصلی گوشی را خاموش کنید؛ پارس‌شیلد برای تبلیغات هیچ نوتیفی نمی‌دهد (صفر نوتیف!) و فقط کدهای تایید، بانک و پیام‌های شخصی را اعلام می‌کند."
+                        "چرا قبلاً نوتیف خاموش نشد؟ چون در گوشی‌های سامسونگ، سوییچ اصلی اعلان برنامه پیامک پیش‌فرض قفل است!\n" +
+                            "راه‌حل دقیق در سامسونگ (فقط ۳ کلیک):\n" +
+                            "۱) اگر در اندروید ۱۳ به بالا دسترسی اعلان پارس‌شیلد خاکستری است، دکمه ۱ را بزنید ← منوی ۳ نقطه بالا (⋮) ← «مجاز کردن تنظیمات محدودشده».\n" +
+                            "۲) دکمه ۲ را بزنید و «دسترسی به اعلان‌ها» را برای پارس‌شیلد روشن کنید.\n" +
+                            "۳) دکمه ۳ را بزنید و در صفحه اعلان Messages سامسونگ، به جای سوییچ قفلِ بالا، گزینه «بی‌صدا / Silent» را انتخاب کرده و تیک «پاپ‌آپ / Pop-up» را بردارید!"
                     } else {
-                        "Keep Samsung/Xiaomi/Google Messages as your Default SMS App for native Dual-SIM sending! Just mute notifications on your stock SMS app—ParsShield stays 100% silent on ads and notifies you ONLY for OTPs, bank alerts & personal messages."
+                        "On Samsung One UI, the top 'Allow notifications' switch is locked ON for Default SMS.\n" +
+                            "1) Tap Step 1 -> ⋮ (top right) -> 'Allow restricted settings' (Android 13+).\n" +
+                            "2) Tap Step 2 -> turn ON Notification Access for ParsShield.\n" +
+                            "3) Tap Step 3 -> choose 'Silent' & uncheck 'Pop-up' for Samsung Messages!"
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    lineHeight = 19.sp
+                    lineHeight = 20.sp
                 )
                 Spacer(modifier = Modifier.height(10.dp))
 
@@ -128,34 +144,67 @@ fun ProtectionSetupScreen(
                         modifier = Modifier.fillMaxWidth()
                     ) {
                         Text(
-                            if (fa) "بازگرداندن پیامک پیش‌فرض به برنامه اصلی گوشی"
-                            else "Switch Default SMS Back to Phone's Stock App"
+                            if (fa) "بازگرداندن پیامک پیش‌فرض به Messages سامسونگ"
+                            else "Switch Default SMS Back to Samsung Messages"
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                 }
 
-                if (!hasSmsPermissions) {
-                    Button(
-                        onClick = onRequestPermissions,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            if (fa) "گام ۱: اعطای دسترسی پیامک و دو سیم‌کارت"
-                            else "Step 1: Grant SMS & Dual-SIM Permissions"
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
+                OutlinedButton(
+                    onClick = onOpenAppInfoForRestrictedSettings,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        if (fa) "۱. باز کردن اطلاعات برنامه (منوی ⋮ ← رفع محدودیت)"
+                        else "1. App Info (⋮ -> Allow restricted settings)"
+                    )
                 }
+                Spacer(modifier = Modifier.height(6.dp))
+
+                Button(
+                    onClick = onOpenNotificationListenerSettings,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        if (fa) {
+                            if (isNotificationListenerEnabled) "۲. دسترسی به اعلان‌ها: فعال است ✓"
+                            else "۲. روشن کردن «دسترسی به اعلان‌ها» برای پارس‌شیلد"
+                        } else {
+                            if (isNotificationListenerEnabled) "2. Notification Access: Active ✓"
+                            else "2. Turn ON Notification Access for ParsShield"
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Button(
                     onClick = onOpenStockSmsNotificationSettings,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text(
-                        if (fa) "گام ۲: خاموش کردن نوتیف پیامک اصلی گوشی (۱ کلیک)"
-                        else "Step 2: Mute Stock SMS App Notifications (1 Tap)"
+                    Icon(
+                        imageVector = Icons.Default.NotificationsOff,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
                     )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        if (fa) "۳. گذاشتن Messages سامسونگ روی حالت «بی‌صدا / Silent»"
+                        else "3. Set Samsung Messages to 'Silent' (No Pop-up)"
+                    )
+                }
+
+                if (!hasSmsPermissions) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    OutlinedButton(
+                        onClick = onRequestPermissions,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            if (fa) "اختیاری: اعطای دسترسی مخاطبین و دو سیم‌کارت"
+                            else "Optional: Grant Contacts & Dual-SIM Permissions"
+                        )
+                    }
                 }
             }
         }
@@ -180,8 +229,8 @@ fun ProtectionSetupScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (fa) "روش ۲: پارس‌شیلد به عنوان پیامک پیش‌فرض (حالا مجهز به دو سیم‌کارت!)"
-                        else "Method 2: ParsShield as Default SMS (Now with Dual-SIM!)",
+                        text = if (fa) "روش ۲: پارس‌شیلد به عنوان پیامک پیش‌فرض (مجهز به سیم‌کارت ۱ و ۲)"
+                        else "Method 2: ParsShield as Default SMS (With SIM 1 / SIM 2)",
                         fontWeight = FontWeight.ExtraBold,
                         fontSize = 14.sp
                     )
@@ -189,9 +238,9 @@ fun ProtectionSetupScreen(
                 Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = if (fa) {
-                        "تبلیغات حتی وارد دیتابیس پیامک گوشی هم نمی‌شوند و ارسال پیامک جدید، انتخاب از مخاطبین و سوئیچ بین سیم‌کارت ۱ و سیم‌کارت ۲ مستقیماً داخل پارس‌شیلد فعال است."
+                        "در این حالت اصلاً نیازی به تغییر تنظیمات نوتیف سامسونگ نیست؛ تبلیغات حتی وارد لیست پیامک‌ها هم نمی‌شوند و ارسال پیام با انتخاب سیم ۱ و سیم ۲ داخل خود پارس‌شیلد انجام می‌شود."
                     } else {
-                        "Ads never even enter your phone's SMS inbox, and full SMS sending + Contact Picker + SIM 1 / SIM 2 switching are built right into ParsShield."
+                        "Ads never enter your SMS list, and SIM 1 / SIM 2 sending + Contact Picker work directly inside ParsShield."
                     },
                     style = MaterialTheme.typography.bodySmall
                 )
@@ -210,7 +259,6 @@ fun ProtectionSetupScreen(
             }
         }
 
-        // Default Outgoing SIM Card Selector (SIM 1 / SIM 2)
         if (simCards.isNotEmpty()) {
             Card(shape = RoundedCornerShape(16.dp)) {
                 Column(modifier = Modifier.padding(16.dp)) {
@@ -253,7 +301,6 @@ fun ProtectionSetupScreen(
             }
         }
 
-        // Zero-Tolerance Ad Controls
         Card(shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
@@ -288,7 +335,6 @@ fun ProtectionSetupScreen(
             }
         }
 
-        // Filtering Mode Selection
         Card(shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
@@ -317,7 +363,6 @@ fun ProtectionSetupScreen(
             }
         }
 
-        // OTP Safety Guardrails
         Card(shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {

@@ -12,24 +12,16 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * MODE A — Smart Silent Relay Receiver (Keep Your Phone's Stock Dual-SIM SMS App!).
- *
- * How it achieves ZERO ad notifications WITHOUT replacing your stock SMS app:
- *  1. You keep Samsung Messages / Xiaomi Messaging / Google Messages as your Default SMS App
- *     (preserving 100% of its native Dual-SIM selector, MMS, RCS, and UI).
- *  2. You turn OFF notifications for that stock SMS app in Android Settings (1 tap inside ParsShield).
- *  3. Android broadcasts SMS_RECEIVED_ACTION to ParsShield in real time:
- *     - Advertisement / Phishing -> ParsShield posts NO notification -> 0 notifications, 0 sound!
- *     - OTP / رمز پویا / Bank / Personal -> ParsShield immediately posts the notification (with
- *       1-Tap Copy OTP, and tapping the notification opens the chat directly inside your stock SMS app!).
+ * Fallback SMS_RECEIVED Relay Receiver (used only when neither Default SMS nor Notification Shield
+ * is active). Yields immediately when SmsNotificationShieldService is active so notifications are
+ * never duplicated.
  */
 class SmsReceivedRelayReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Telephony.Sms.Intents.SMS_RECEIVED_ACTION) return
-
-        // If ParsShield IS the Default SMS App, SmsDeliverReceiver handles SMS exclusively.
         if (SmsRepository.isDefaultSmsApp(context)) return
+        if (SmsNotificationShieldService.isNotificationAccessGranted(context)) return
 
         val parts = Telephony.Sms.Intents.getMessagesFromIntent(intent)
         if (parts.isNullOrEmpty()) return

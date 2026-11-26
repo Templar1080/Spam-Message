@@ -433,6 +433,26 @@ class SmsRepository(
         }.getOrNull()
     }
 
+    fun isKnownContactByNumberOrName(senderOrTitle: String): Boolean {
+        val trimmed = senderOrTitle.trim()
+        if (trimmed.isEmpty()) return false
+        if (lookupContactName(trimmed) != null) return true
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return false
+        }
+        return runCatching {
+            context.contentResolver.query(
+                ContactsContract.Contacts.CONTENT_URI,
+                arrayOf(ContactsContract.Contacts._ID),
+                "${ContactsContract.Contacts.DISPLAY_NAME_PRIMARY} = ?",
+                arrayOf(trimmed),
+                null
+            )?.use { it.moveToFirst() } == true
+        }.getOrDefault(false)
+    }
+
     companion object {
         fun isDefaultSmsApp(context: Context): Boolean {
             return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {

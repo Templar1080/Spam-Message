@@ -20,6 +20,7 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import ir.parsshield.smsblocker.data.SmsRepository
 import ir.parsshield.smsblocker.service.NotificationHelper
+import ir.parsshield.smsblocker.service.SmsNotificationShieldService
 import ir.parsshield.smsblocker.ui.MainScreen
 import ir.parsshield.smsblocker.ui.ParsShieldViewModel
 import ir.parsshield.smsblocker.ui.theme.ParsShieldTheme
@@ -31,6 +32,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private var isDefaultSmsApp by mutableStateOf(false)
+    private var isNotificationListenerEnabled by mutableStateOf(false)
     private var hasSmsPermissions by mutableStateOf(false)
 
     private val permissionsLauncher = registerForActivityResult(
@@ -59,6 +61,14 @@ class MainActivity : ComponentActivity() {
         refreshSystemStates()
         NotificationHelper.ensureChannelsCreated(this)
 
+        // Request POST_NOTIFICATIONS right away on Android 13+ so ParsShield can post OTP/Allowed alerts!
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            permissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+        }
+
         val initialRecipient = intent?.data?.schemeSpecificPart
             ?.substringBefore('?')
             ?.takeIf { it.isNotBlank() }
@@ -70,10 +80,13 @@ class MainActivity : ComponentActivity() {
                 MainScreen(
                     viewModel = viewModel,
                     isDefaultSmsApp = isDefaultSmsApp,
+                    isNotificationListenerEnabled = isNotificationListenerEnabled,
                     hasSmsPermissions = hasSmsPermissions,
                     initialComposeRecipient = initialRecipient,
                     initialOpenThreadAddress = initialOpenThread,
                     onRequestPermissions = ::requestAllSmsAndDualSimPermissions,
+                    onOpenAppInfoForRestrictedSettings = ::openAppInfoForRestrictedSettings,
+                    onOpenNotificationListenerSettings = ::openNotificationListenerSettings,
                     onOpenStockSmsNotificationSettings = ::openStockSmsNotificationSettings,
                     onOpenDefaultAppsSettings = ::openDefaultAppsSettings,
                     onOpenSenderInStockSmsApp = ::openSenderInStockSmsApp,
@@ -91,10 +104,11 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshSystemStates() {
         isDefaultSmsApp = SmsRepository.isDefaultSmsApp(this)
+        isNotificationListenerEnabled = SmsNotificationShieldService.isNotificationAccessGranted(this)
         hasSmsPermissions = ContextCompat.checkSelfPermission(
             this,
-            Manifest.permission.RECEIVE_SMS
-        ) == PackageManager.PERMISSION_GRANTED &&
+            Manifest.permission.READ_CONTACTS
+        ) == PackageManager.PERMISSION_GRANTED ||
             ContextCompat.checkSelfPermission(
                 this,
                 Manifest.permission.SEND_SMS
@@ -115,21 +129,46 @@ class MainActivity : ComponentActivity() {
         permissionsLauncher.launch(perms)
     }
 
-    /**
-     * Opens Android's Notification Settings directly for the user's current Default SMS App
-     * (e.g. Samsung Messages, Google Messages, Xiaomi Messaging) so they can mute it in 1 tap!
-     */
+    private fun openAppInfoForRestrictedSettings() {
+        Toast.makeText(
+            this,
+            "در صفحه بازشده روی ۳ نقطه بالا (⋮) بزنید و «مجاز کردن تنظیمات محدودشده» را انتخاب کنید",
+            Toast.LENGTH_LONG
+        ).show()
+        runCatching {
+            startActivity(
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", packageName, null)
+                }
+            )
+        }
+    }
+
+    private fun openNotificationListenerSettings() {
+        runCatching {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }.onFailure {
+            openAppInfoForRestrictedSettings()
+        }
+    }
+
     private fun openStockSmsNotificationSettings() {
         val currentDefaultPkg = Telephony.Sms.getDefaultSmsPackage(this)
         if (currentDefaultPkg.isNullOrBlank() || currentDefaultPkg == packageName) {
             Toast.makeText(
                 this,
-                "ابتدا در تنظیمات برنامه‌های پیش‌فرض، برنامه پیامک اصلی گوشی را انتخاب کنید.",
+                "ابتدا برنامه پیامک اصلی سامسونگ را به عنوان پیش‌فرض انتخاب کنید.",
                 Toast.LENGTH_LONG
             ).show()
             openDefaultAppsSettings()
             return
         }
+
+        Toast.makeText(
+            this,
+            "در سامسونگ گزینه «بی‌صدا / Silent» را انتخاب کنید و تیک «پاپ‌آپ / Pop-up» را بردارید!",
+            Toast.LENGTH_LONG
+        ).show()
 
         val notifIntent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
             putExtra(Settings.EXTRA_APP_PACKAGE, currentDefaultPkg)

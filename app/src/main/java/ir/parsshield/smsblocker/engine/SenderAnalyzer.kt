@@ -20,32 +20,34 @@ object SenderAnalyzer {
     )
 
     private val CARRIER_SENDERS = setOf(
-        "HAMRAHAVAL", "MCI", "IRANCELL", "MTNIRANCELL", "RIGHTEL",
-        "SHATEL", "SAMANTEL", "9990", "8999", "8080", "700", "4444", "9920"
+        "HAMRAHAVAL", "HAMRAH-AVAL", "HAMRAH AVAL", "MCI", "IR-MCI",
+        "IRANCELL", "MTNIRANCELL", "MTN IRANCELL", "RIGHTEL",
+        "SHATEL", "SAMANTEL", "9990", "8999", "8080", "700", "4444", "9920", "990009"
     )
 
-    private val STRIP_FORMATTING_REGEX = Regex("""[\s()-]""")
-    private val BULK_SHORTCODE_REGEX = Regex("""^(1000|2000|3000|5000|9000)\d{2,11}$""")
+    // Strips whitespace, formatting punctuation, AND Unicode BiDi marks (\u200E, \u202A-\u202E, \u2066-\u2069)
+    // injected by Samsung One UI & Google Messages around phone numbers!
+    private val STRIP_FORMATTING_REGEX = Regex(
+        """[\s()\-\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]"""
+    )
+    private val BULK_SHORTCODE_REGEX = Regex("""^(1000|2000|3000|4000|5000|9000)\d{1,12}$""")
+    private val SHORT_COMMERCIAL_CODE_REGEX = Regex("""^\d{3,8}$""")
     private val PERSONAL_MOBILE_REGEX = Regex("""^9\d{9}$""")
     private val PROVINCIAL_LANDLINE_REGEX = Regex(
         """^(?:21|26|31|51|71|41|11|13|61|35|25|81|86|44|45|23|24|28|34|38|54|56|58|66|74|76|77|83|84|87|17)\d{6,8}$"""
     )
-    private val HAS_ASCII_LETTERS_REGEX = Regex("""[A-Za-z]""")
+    private val HAS_LETTERS_REGEX = Regex("""[A-Za-z\u0600-\u06FF]""")
 
     private val CANON_0098_MOBILE = Regex("""^00989\d{9}$""")
     private val CANON_98_MOBILE = Regex("""^989\d{9}$""")
     private val CANON_09_MOBILE = Regex("""^09\d{9}$""")
     private val CANON_9_MOBILE = Regex("""^9\d{9}$""")
 
-    /**
-     * Merges "+989121234567", "09121234567", and "00989121234567" into a single canonical
-     * conversation thread key ("+989121234567").
-     */
     fun canonicalizeThreadAddress(rawSender: String): String {
         val cleaned = TextNormalizer.normalizeDigits(rawSender)
             .replace(STRIP_FORMATTING_REGEX, "")
             .trim()
-        if (HAS_ASCII_LETTERS_REGEX.containsMatchIn(cleaned)) {
+        if (HAS_LETTERS_REGEX.containsMatchIn(cleaned)) {
             return cleaned.uppercase()
         }
         val noPlus = cleaned.removePrefix("+")
@@ -72,14 +74,14 @@ object SenderAnalyzer {
             return SenderAnalysis(SenderType.KNOWN_BANK_OR_GOV, upper)
         }
 
-        if (upper in CARRIER_SENDERS) {
+        if (upper in CARRIER_SENDERS || upper.contains("IRANCELL") || upper.contains("HAMRAHAVAL")) {
             return SenderAnalysis(SenderType.CARRIER_SENDER, upper)
         }
 
         val numericOnly = cleaned.removePrefix("+")
         val national = when {
             numericOnly.startsWith("0098") && numericOnly.length > 6 -> numericOnly.substring(4)
-            numericOnly.startsWith("98") && numericOnly.length >= 8 -> numericOnly.substring(2)
+            numericOnly.startsWith("98") && numericOnly.length >= 6 -> numericOnly.substring(2)
             numericOnly.startsWith("0") && numericOnly.length >= 10 -> numericOnly.substring(1)
             else -> numericOnly
         }
@@ -100,7 +102,15 @@ object SenderAnalyzer {
             return SenderAnalysis(SenderType.IRAN_LANDLINE_PANEL, cleaned)
         }
 
-        if (HAS_ASCII_LETTERS_REGEX.containsMatchIn(cleaned)) {
+        if (SHORT_COMMERCIAL_CODE_REGEX.matches(national)) {
+            return SenderAnalysis(
+                senderType = SenderType.IRAN_BULK_SHORTCODE,
+                cleanedSender = cleaned,
+                bulkPrefix = national.take(4)
+            )
+        }
+
+        if (HAS_LETTERS_REGEX.containsMatchIn(cleaned)) {
             return SenderAnalysis(SenderType.ALPHANUMERIC_BRAND, upper)
         }
 

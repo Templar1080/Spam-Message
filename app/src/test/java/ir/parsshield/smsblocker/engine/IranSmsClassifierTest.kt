@@ -22,6 +22,9 @@ class IranSmsClassifierTest {
         assertEquals("+989121234567", SenderAnalyzer.canonicalizeThreadAddress("09121234567"))
         assertEquals("+989121234567", SenderAnalyzer.canonicalizeThreadAddress("+98 912 123 4567"))
         assertEquals("+989121234567", SenderAnalyzer.canonicalizeThreadAddress("00989121234567"))
+        // BiDi-wrapped sender from Samsung One UI / Google Messages notification
+        val bidiWrapped = "\u2068+98 5000 12345\u2069"
+        assertEquals(SenderType.IRAN_BULK_SHORTCODE, SenderAnalyzer.analyze(bidiWrapped).senderType)
     }
 
     @Test

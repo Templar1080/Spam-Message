@@ -22,9 +22,9 @@ import ir.parsshield.smsblocker.engine.SmsCategory
 /**
  * Posts notifications ONLY for verified non-spam messages (OTPs, Bank alerts, Service & Personal).
  *
- * When [openInStockSmsApp] is true (Smart Relay Mode), tapping the notification opens the sender's
- * conversation directly inside the user's stock Default SMS app (Samsung / Xiaomi / Google Messages)
- * so they can reply with their stock Dual-SIM UI!
+ * When [originalContentIntent] is provided (from Samsung Messages / Google Messages via
+ * SmsNotificationShieldService), tapping the notification executes the stock SMS app's exact
+ * PendingIntent so the chat opens seamlessly inside Samsung/Google Messages with Dual-SIM ready!
  */
 object NotificationHelper {
 
@@ -50,6 +50,7 @@ object NotificationHelper {
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Notifications for verified personal, bank, and service messages"
+            enableVibration(true)
         }
 
         manager.createNotificationChannel(otpChannel)
@@ -59,7 +60,8 @@ object NotificationHelper {
     fun showAllowedSmsNotification(
         context: Context,
         entity: SmsEntity,
-        openInStockSmsApp: Boolean = false
+        openInStockSmsApp: Boolean = false,
+        originalContentIntent: PendingIntent? = null
     ) {
         if (entity.isBlocked) return
 
@@ -73,11 +75,10 @@ object NotificationHelper {
         ensureChannelsCreated(context)
 
         val notificationId = (entity.id.takeIf { it > 0 } ?: System.currentTimeMillis()).toInt()
-        val openIntent = buildOpenThreadIntent(context, entity, openInStockSmsApp)
-        val openPending = PendingIntent.getActivity(
+        val openPending = originalContentIntent ?: PendingIntent.getActivity(
             context,
             notificationId,
-            openIntent,
+            buildOpenThreadIntent(context, entity, openInStockSmsApp),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
