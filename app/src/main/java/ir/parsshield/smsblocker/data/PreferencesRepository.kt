@@ -23,6 +23,7 @@ data class ShieldSettings(
     val neverBlockOtpEvenFromBlocked: Boolean = true,
     val autoCopyOtpToClipboard: Boolean = true,
     val persianUi: Boolean = true,
+    val preferredSimSubId: Int = -1,
     val vaporizedCount: Int = 0
 )
 
@@ -36,6 +37,7 @@ class PreferencesRepository(private val context: Context) {
         val NEVER_BLOCK_OTP = booleanPreferencesKey("never_block_otp")
         val AUTO_COPY_OTP = booleanPreferencesKey("auto_copy_otp")
         val PERSIAN_UI = booleanPreferencesKey("persian_ui")
+        val PREFERRED_SIM_SUB_ID = intPreferencesKey("preferred_sim_sub_id")
         val VAPORIZED_COUNT = intPreferencesKey("vaporized_count")
     }
 
@@ -51,6 +53,7 @@ class PreferencesRepository(private val context: Context) {
             neverBlockOtpEvenFromBlocked = prefs[Keys.NEVER_BLOCK_OTP] ?: true,
             autoCopyOtpToClipboard = prefs[Keys.AUTO_COPY_OTP] ?: true,
             persianUi = prefs[Keys.PERSIAN_UI] ?: true,
+            preferredSimSubId = prefs[Keys.PREFERRED_SIM_SUB_ID] ?: -1,
             vaporizedCount = prefs[Keys.VAPORIZED_COUNT] ?: 0
         )
     }
@@ -81,14 +84,18 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { it[Keys.AUTO_COPY_OTP] = enabled }
     }
 
-    suspend fun setPersianUi(persian: Boolean) {
-        context.dataStore.edit { it[Keys.PERSIAN_UI] = persian }
+    suspend fun setPersianUi(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.PERSIAN_UI] = enabled }
+    }
+
+    suspend fun setPreferredSimSubId(subId: Int) {
+        context.dataStore.edit { it[Keys.PREFERRED_SIM_SUB_ID] = subId }
     }
 
     suspend fun incrementVaporizedCount() {
         context.dataStore.edit { prefs ->
-            val curr = prefs[Keys.VAPORIZED_COUNT] ?: 0
-            prefs[Keys.VAPORIZED_COUNT] = curr + 1
+            val current = prefs[Keys.VAPORIZED_COUNT] ?: 0
+            prefs[Keys.VAPORIZED_COUNT] = current + 1
         }
     }
 }

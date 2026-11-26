@@ -2,8 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-      PRIVACY GUARANTEE: android.permission.INTERNET is intentionally NOT requested.
-      Android enforces at the OS kernel level that your OTPs, bank SMS, and contacts can never leave your phone.
+        PRIVACY GUARANTEE:
+        Notice there is NO <uses-permission android:name="android.permission.INTERNET" /> anywhere!
+        ParsShield runs 100% on-device so OTPs, رمز پویا, bank alerts, and personal SMS
+        can NEVER leave your phone.
     -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
@@ -11,32 +13,39 @@
     <uses-permission android:name="android.permission.RECEIVE_MMS" />
     <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <uses-feature
         android:name="android.hardware.telephony"
         android:required="false" />
 
+    <!-- Allows opening the user's stock Default SMS app directly on Android 11–15 -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+    </queries>
+
     <application
         android:name=".ParsShieldApp"
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
-        android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
+        android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.ParsShield">
 
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
-            <!-- Required intent-filters to qualify as Default SMS Handler (RoleManager.ROLE_SMS) -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SENDTO" />
@@ -49,11 +58,7 @@
             </intent-filter>
         </activity>
 
-        <!--
-          PRE-NOTIFICATION RADIO-LEVEL SMS INTERCEPTOR (SMS_DELIVER):
-          When ParsShield is set as Default SMS App, Android delivers incoming SMS exclusively here
-          BEFORE any notification, sound, vibration, or screen wake can ever be created.
-        -->
+        <!-- MODE B: Exclusive Default SMS Pre-Notification Radio Interceptor -->
         <receiver
             android:name=".service.SmsDeliverReceiver"
             android:exported="true"
@@ -63,7 +68,16 @@
             </intent-filter>
         </receiver>
 
-        <!-- Required by Android RoleManager.ROLE_SMS -->
+        <!-- MODE A: Smart Silent Relay (Keep your Stock Dual-SIM SMS App + Zero Ad Notifications!) -->
+        <receiver
+            android:name=".service.SmsReceivedRelayReceiver"
+            android:exported="true"
+            android:permission="android.permission.BROADCAST_SMS">
+            <intent-filter android:priority="999">
+                <action android:name="android.provider.Telephony.SMS_RECEIVED" />
+            </intent-filter>
+        </receiver>
+
         <receiver
             android:name=".service.MmsReceiver"
             android:exported="true"
@@ -74,7 +88,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- Required by Android RoleManager.ROLE_SMS -->
         <service
             android:name=".service.HeadlessSmsSendService"
             android:exported="true"
@@ -89,12 +102,10 @@
             </intent-filter>
         </service>
 
-        <!-- 1-Tap OTP Copy action from notification shade -->
         <receiver
             android:name=".service.CopyOtpReceiver"
             android:exported="false" />
 
-        <!-- Inline Direct Reply & 1-Tap Block Sender actions from notification shade -->
         <receiver
             android:name=".service.NotificationActionReceiver"
             android:exported="false" />

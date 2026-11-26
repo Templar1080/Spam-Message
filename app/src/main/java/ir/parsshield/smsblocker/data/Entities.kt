@@ -28,6 +28,7 @@ data class SmsEntity(
     val category: SmsCategory,
     val isBlocked: Boolean,
     val isOutgoing: Boolean = false,
+    val simSlot: Int? = null,
     val otpCode: String? = null,
     val spamScore: Int = 0,
     val reasonSummary: String = "",

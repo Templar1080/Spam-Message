@@ -16,6 +16,8 @@ import ir.parsshield.smsblocker.engine.FilterMode
 import ir.parsshield.smsblocker.engine.IranSmsClassifier
 import ir.parsshield.smsblocker.engine.RuleAction
 import ir.parsshield.smsblocker.engine.RuleTarget
+import ir.parsshield.smsblocker.service.SimCardHelper
+import ir.parsshield.smsblocker.service.SimCardInfo
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -47,14 +49,26 @@ class ParsShieldViewModel(application: Application) : AndroidViewModel(applicati
     val settings: StateFlow<ShieldSettings> = prefs.settingsFlow
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), ShieldSettings())
 
+    private val _simCards = MutableStateFlow<List<SimCardInfo>>(emptyList())
+    val simCards: StateFlow<List<SimCardInfo>> = _simCards.asStateFlow()
+
     private val _isScanning = MutableStateFlow(false)
     val isScanning: StateFlow<Boolean> = _isScanning.asStateFlow()
+
+    init {
+        refreshSimCards()
+    }
+
+    fun refreshSimCards() {
+        _simCards.value = SimCardHelper.getActiveSimCards(app)
+    }
 
     fun scanDeviceInbox() {
         if (_isScanning.value) return
         viewModelScope.launch {
             _isScanning.value = true
             try {
+                refreshSimCards()
                 val imported = smsRepository.scanExistingSystemInbox(limit = 350)
                 val fa = settings.value.persianUi
                 Toast.makeText(
@@ -158,9 +172,23 @@ class ParsShieldViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
-    fun sendSms(destination: String, text: String, onComplete: (Boolean) -> Unit) {
+    fun setPreferredSim(subscriptionId: Int) {
         viewModelScope.launch {
-            val res = smsRepository.sendSmsMessage(destination, text)
+            prefs.setPreferredSimSubId(subscriptionId)
+        }
+    }
+
+    fun sendSms(
+        destination: String,
+        text: String,
+        subscriptionId: Int? = null,
+        onComplete: (Boolean) -> Unit
+    ) {
+        viewModelScope.launch {
+            if (subscriptionId != null && subscriptionId >= 0) {
+                prefs.setPreferredSimSubId(subscriptionId)
+            }
+            val res = smsRepository.sendSmsMessage(destination, text, subscriptionId)
             val fa = settings.value.persianUi
             if (res.isSuccess) {
                 Toast.makeText(
@@ -172,7 +200,7 @@ class ParsShieldViewModel(application: Application) : AndroidViewModel(applicati
             } else {
                 Toast.makeText(
                     app,
-                    if (fa) "خطا در ارسال پیامک"
+                    if (fa) "خطا در ارسال پیامک (دسترسی پیامک را بررسی کنید)"
                     else "Failed: ${res.exceptionOrNull()?.localizedMessage ?: "Permission required"}",
                     Toast.LENGTH_LONG
                 ).show()

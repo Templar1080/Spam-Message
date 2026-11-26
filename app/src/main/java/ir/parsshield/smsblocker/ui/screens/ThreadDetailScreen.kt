@@ -23,11 +23,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.SimCard
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,6 +40,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -49,6 +53,7 @@ import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import ir.parsshield.smsblocker.data.SmsEntity
+import ir.parsshield.smsblocker.service.SimCardInfo
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -59,14 +64,30 @@ fun ThreadDetailScreen(
     rawSender: String,
     messages: List<SmsEntity>,
     persianUi: Boolean,
-    canReply: Boolean,
+    isDefaultSmsApp: Boolean,
+    simCards: List<SimCardInfo>,
+    preferredSimSubId: Int,
     onBack: () -> Unit,
-    onSendReply: (String) -> Unit,
+    onSendReply: (text: String, subscriptionId: Int?) -> Unit,
+    onOpenInStockSmsApp: (() -> Unit)? = null,
     onCopyOtp: (String) -> Unit,
     onBlockThread: () -> Unit
 ) {
     var replyText by remember { mutableStateOf("") }
     val chronological = remember(messages) { messages.sortedBy { it.timestamp } }
+
+    // Default SIM for this thread: last SIM slot that received/sent in this thread, else preferred SIM
+    val initialSubId = remember(simCards, preferredSimSubId, chronological) {
+        val lastSlot = chronological.lastOrNull { it.simSlot != null }?.simSlot
+        val byThreadSlot = lastSlot?.let { slot ->
+            simCards.firstOrNull { it.slotNumber == slot }?.subscriptionId
+        }
+        byThreadSlot
+            ?: simCards.firstOrNull { it.subscriptionId == preferredSimSubId }?.subscriptionId
+            ?: simCards.firstOrNull()?.subscriptionId
+            ?: -1
+    }
+    var selectedSubId by remember(initialSubId) { mutableIntStateOf(initialSubId) }
 
     Scaffold(
         topBar = {
@@ -93,6 +114,15 @@ fun ThreadDetailScreen(
                     }
                 },
                 actions = {
+                    if (!isDefaultSmsApp && onOpenInStockSmsApp != null) {
+                        IconButton(onClick = onOpenInStockSmsApp) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = "Open in Stock SMS App",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                     IconButton(onClick = onBlockThread) {
                         Icon(
                             imageVector = Icons.Default.Block,
@@ -104,15 +134,46 @@ fun ThreadDetailScreen(
             )
         },
         bottomBar = {
-            if (canReply) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .imePadding()
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                // Dual-SIM Selector Bar (SIM 1 / SIM 2)
+                if (simCards.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        simCards.forEach { sim ->
+                            FilterChip(
+                                selected = selectedSubId == sim.subscriptionId,
+                                onClick = { selectedSubId = sim.subscriptionId },
+                                label = {
+                                    Text(sim.label(persianUi), fontSize = 11.sp)
+                                },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.SimCard,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                }
+                            )
+                        }
+                    }
+                }
+
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface)
-                        .imePadding()
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val activeSim = simCards.firstOrNull { it.subscriptionId == selectedSubId }
                     OutlinedTextField(
                         value = replyText,
                         onValueChange = { replyText = it },
@@ -121,7 +182,14 @@ fun ThreadDetailScreen(
                         shape = RoundedCornerShape(20.dp),
                         textStyle = TextStyle(fontSize = 14.sp, textDirection = TextDirection.Content),
                         placeholder = {
-                            Text(if (persianUi) "ارسال پیامک..." else "Write SMS message...")
+                            val hint = if (persianUi) {
+                                if (activeSim != null) "ارسال پیامک با سیم ${activeSim.slotNumber}..."
+                                else "نوشتن پیامک..."
+                            } else {
+                                if (activeSim != null) "Send SMS via SIM ${activeSim.slotNumber}..."
+                                else "Write SMS message..."
+                            }
+                            Text(hint, fontSize = 13.sp)
                         }
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -129,7 +197,7 @@ fun ThreadDetailScreen(
                         onClick = {
                             val trimmed = replyText.trim()
                             if (trimmed.isNotEmpty()) {
-                                onSendReply(trimmed)
+                                onSendReply(trimmed, selectedSubId.takeIf { it >= 0 })
                                 replyText = ""
                             }
                         },
@@ -159,6 +227,9 @@ fun ThreadDetailScreen(
                     SimpleDateFormat("MMM d, HH:mm", Locale.US).format(Date(msg.timestamp))
                 }
                 val isOut = msg.isOutgoing
+                val simSuffix = msg.simSlot?.let {
+                    if (persianUi) " • سیم $it" else " • SIM $it"
+                }.orEmpty()
 
                 Column(
                     modifier = Modifier.fillMaxWidth(),
@@ -217,7 +288,7 @@ fun ThreadDetailScreen(
 
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = timeStr,
+                                text = "$timeStr$simSuffix",
                                 fontSize = 10.sp,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )

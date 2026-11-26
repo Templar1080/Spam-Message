@@ -1,6 +1,7 @@
 package ir.parsshield.smsblocker.data
 
 import android.Manifest
+import android.app.role.RoleManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ContentUris
@@ -12,6 +13,7 @@ import android.os.Build
 import android.provider.ContactsContract
 import android.provider.Telephony
 import android.telephony.SmsManager
+import android.telephony.SubscriptionManager
 import androidx.core.content.ContextCompat
 import ir.parsshield.smsblocker.engine.ClassificationResult
 import ir.parsshield.smsblocker.engine.IranSmsClassifier
@@ -19,6 +21,7 @@ import ir.parsshield.smsblocker.engine.RuleAction
 import ir.parsshield.smsblocker.engine.RuleTarget
 import ir.parsshield.smsblocker.engine.SenderAnalyzer
 import ir.parsshield.smsblocker.engine.SmsCategory
+import ir.parsshield.smsblocker.service.SimCardHelper
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -35,20 +38,14 @@ class SmsRepository(
     private val dao: SmsDao,
     private val preferences: PreferencesRepository
 ) {
-
     val allMessages: Flow<List<SmsEntity>> = dao.observeAllMessages()
     val allRules: Flow<List<RuleEntity>> = dao.observeRules()
 
-    /**
-     * Radio-level pre-notification SMS processor.
-     * Executes in < 2ms inside SmsDeliverReceiver BEFORE any notification exists:
-     *  - Blocked spam/ads -> NEVER written to Telephony.Sms.Inbox and NEVER notified.
-     *  - Allowed OTP/Bank/Personal -> persisted & returned for instant notification.
-     */
     suspend fun processIncomingSms(
         sender: String,
         body: String,
-        timestamp: Long = System.currentTimeMillis()
+        timestamp: Long = System.currentTimeMillis(),
+        simSlot: Int? = null
     ): ProcessedSmsOutcome = withContext(Dispatchers.IO) {
         val settings = preferences.getSnapshot()
         val rules = dao.getAllRulesSnapshot().map { it.toDomain() }
@@ -81,7 +78,6 @@ class SmsRepository(
             )
         }
 
-        // Vaporize Mode: discard spam in RAM immediately without even saving to SQLite
         if (shouldActuallyBlock && settings.dropSpamCompletely) {
             preferences.incrementVaporizedCount()
             return@withContext ProcessedSmsOutcome(
@@ -116,6 +112,7 @@ class SmsRepository(
             category = result.category,
             isBlocked = shouldActuallyBlock,
             isOutgoing = false,
+            simSlot = simSlot,
             otpCode = result.otpCode,
             spamScore = result.spamScore,
             reasonSummary = result.reasonSummary,
@@ -132,10 +129,6 @@ class SmsRepository(
         )
     }
 
-    /**
-     * Imports existing Inbox + Sent SMS history from Android's Telephony provider so switching
-     * to ParsShield as your Default SMS App preserves all conversations, OTPs, and bank alerts.
-     */
     suspend fun scanExistingSystemInbox(limit: Int = 350): Int = withContext(Dispatchers.IO) {
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_SMS) !=
             PackageManager.PERMISSION_GRANTED
@@ -153,7 +146,8 @@ class SmsRepository(
             Telephony.Sms.BODY,
             Telephony.Sms.DATE,
             Telephony.Sms.READ,
-            Telephony.Sms.TYPE
+            Telephony.Sms.TYPE,
+            Telephony.Sms.SUBSCRIPTION_ID
         )
 
         runCatching {
@@ -170,6 +164,7 @@ class SmsRepository(
                 val dateIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.DATE)
                 val readIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.READ)
                 val typeIdx = cursor.getColumnIndexOrThrow(Telephony.Sms.TYPE)
+                val subIdx = cursor.getColumnIndex(Telephony.Sms.SUBSCRIPTION_ID)
 
                 var scanned = 0
                 while (cursor.moveToNext() && scanned < limit) {
@@ -182,6 +177,8 @@ class SmsRepository(
                     val timestamp = cursor.getLong(dateIdx)
                     val isRead = cursor.getInt(readIdx) == 1
                     val isOutgoing = cursor.getInt(typeIdx) == Telephony.Sms.MESSAGE_TYPE_SENT
+                    val rawSubId = if (subIdx >= 0) cursor.getInt(subIdx) else -1
+                    val simSlot = SimCardHelper.resolveSimSlotNumber(context, rawSubId)
 
                     val contactName = lookupContactName(sender)
                     val threadAddress = SenderAnalyzer.canonicalizeThreadAddress(sender)
@@ -197,6 +194,7 @@ class SmsRepository(
                                 category = SmsCategory.PERSONAL,
                                 isBlocked = false,
                                 isOutgoing = true,
+                                simSlot = simSlot,
                                 isRead = true,
                                 systemSmsId = sysId
                             )
@@ -221,6 +219,7 @@ class SmsRepository(
                                 category = result.category,
                                 isBlocked = result.shouldBlock,
                                 isOutgoing = false,
+                                simSlot = simSlot,
                                 otpCode = result.otpCode,
                                 spamScore = result.spamScore,
                                 reasonSummary = result.reasonSummary,
@@ -320,76 +319,81 @@ class SmsRepository(
         dao.deleteRule(rule)
     }
 
-    suspend fun sendSmsMessage(destination: String, text: String): Result<Unit> =
-        withContext(Dispatchers.IO) {
-            runCatching {
-                val destTrimmed = destination.trim()
-                val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    /**
+     * Sends an SMS using the user's chosen SIM card ([subscriptionId] for SIM 1 / SIM 2) or
+     * default subscription, working both when ParsShield is Default SMS App and when SEND_SMS is granted.
+     */
+    suspend fun sendSmsMessage(
+        destination: String,
+        text: String,
+        subscriptionId: Int? = null
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val destTrimmed = destination.trim()
+            val effectiveSubId = subscriptionId?.takeIf {
+                it != SubscriptionManager.INVALID_SUBSCRIPTION_ID && it >= 0
+            } ?: preferences.getSnapshot().preferredSimSubId.takeIf { it >= 0 }
+
+            val smsManager = when {
+                effectiveSubId != null -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        context.getSystemService(SmsManager::class.java)
+                            .createForSubscriptionId(effectiveSubId)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        SmsManager.getSmsManagerForSubscriptionId(effectiveSubId)
+                    }
+                }
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
                     context.getSystemService(SmsManager::class.java)
-                } else {
+                }
+                else -> {
                     @Suppress("DEPRECATION")
                     SmsManager.getDefault()
                 }
-                val parts = smsManager.divideMessage(text)
-                smsManager.sendMultipartTextMessage(destTrimmed, null, parts, null, null)
+            }
 
-                val now = System.currentTimeMillis()
-                var sysId: Long? = null
-                if (isDefaultSmsApp(context)) {
-                    val values = ContentValues().apply {
-                        put(Telephony.Sms.ADDRESS, destTrimmed)
-                        put(Telephony.Sms.BODY, text)
-                        put(Telephony.Sms.DATE, now)
-                        put(Telephony.Sms.READ, 1)
+            val parts = smsManager.divideMessage(text)
+            smsManager.sendMultipartTextMessage(destTrimmed, null, parts, null, null)
+
+            val simSlot = SimCardHelper.resolveSimSlotNumber(context, effectiveSubId)
+            val now = System.currentTimeMillis()
+            var sysId: Long? = null
+            if (isDefaultSmsApp(context)) {
+                val values = ContentValues().apply {
+                    put(Telephony.Sms.ADDRESS, destTrimmed)
+                    put(Telephony.Sms.BODY, text)
+                    put(Telephony.Sms.DATE, now)
+                    put(Telephony.Sms.READ, 1)
+                    if (effectiveSubId != null) {
+                        put(Telephony.Sms.SUBSCRIPTION_ID, effectiveSubId)
                     }
-                    sysId = runCatching {
-                        context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, values)
-                            ?.let { ContentUris.parseId(it) }
-                    }.getOrNull()
                 }
+                sysId = runCatching {
+                    context.contentResolver.insert(Telephony.Sms.Sent.CONTENT_URI, values)
+                        ?.let { ContentUris.parseId(it) }
+                }.getOrNull()
+            }
 
-                val contactName = lookupContactName(destTrimmed)
-                dao.insertMessage(
-                    SmsEntity(
-                        threadAddress = SenderAnalyzer.canonicalizeThreadAddress(destTrimmed),
-                        sender = destTrimmed,
-                        displayName = contactName,
-                        body = text,
-                        timestamp = now,
-                        category = SmsCategory.PERSONAL,
-                        isBlocked = false,
-                        isOutgoing = true,
-                        isRead = true,
-                        systemSmsId = sysId
-                    )
+            val contactName = lookupContactName(destTrimmed)
+            dao.insertMessage(
+                SmsEntity(
+                    threadAddress = SenderAnalyzer.canonicalizeThreadAddress(destTrimmed),
+                    sender = destTrimmed,
+                    displayName = contactName,
+                    body = text,
+                    timestamp = now,
+                    category = SmsCategory.PERSONAL,
+                    isBlocked = false,
+                    isOutgoing = true,
+                    simSlot = simSlot,
+                    reasonSummary = "Sent message",
+                    isRead = true,
+                    systemSmsId = sysId
                 )
-                Unit
-            }
-        }
-
-    private fun lookupContactName(sender: String): String? {
-        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            return null
-        }
-        if (sender.count { it.isDigit() } < 7) return null
-
-        return runCatching {
-            val uri = Uri.withAppendedPath(
-                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
-                Uri.encode(sender)
             )
-            context.contentResolver.query(
-                uri,
-                arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
-                null,
-                null,
-                null
-            )?.use { cursor ->
-                if (cursor.moveToFirst()) cursor.getString(0) else null
-            }
-        }.getOrNull()
+            Unit
+        }
     }
 
     private fun insertIntoSystemInbox(sender: String, body: String, timestamp: Long): Long? {
@@ -405,16 +409,43 @@ class SmsRepository(
         }.getOrNull()
     }
 
+    fun lookupContactName(phoneNumber: String): String? {
+        if (phoneNumber.isBlank()) return null
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CONTACTS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return null
+        }
+        return runCatching {
+            val uri = Uri.withAppendedPath(
+                ContactsContract.PhoneLookup.CONTENT_FILTER_URI,
+                Uri.encode(phoneNumber)
+            )
+            context.contentResolver.query(
+                uri,
+                arrayOf(ContactsContract.PhoneLookup.DISPLAY_NAME),
+                null,
+                null,
+                null
+            )?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            }
+        }.getOrNull()
+    }
+
     companion object {
         fun isDefaultSmsApp(context: Context): Boolean {
-            return runCatching {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val roleManager = context.getSystemService(RoleManager::class.java)
+                roleManager?.isRoleHeld(RoleManager.ROLE_SMS) == true
+            } else {
                 Telephony.Sms.getDefaultSmsPackage(context) == context.packageName
-            }.getOrDefault(false)
+            }
         }
 
         fun copyOtpToClipboard(context: Context, otpCode: String) {
             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("OTP Code", otpCode))
+            clipboard.setPrimaryClip(ClipData.newPlainText("OTP Verification Code", otpCode))
         }
     }
 }

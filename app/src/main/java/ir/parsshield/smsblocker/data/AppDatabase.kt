@@ -8,7 +8,7 @@ import androidx.room.TypeConverters
 
 @Database(
     entities = [SmsEntity::class, RuleEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 @TypeConverters(RoomConverters::class)

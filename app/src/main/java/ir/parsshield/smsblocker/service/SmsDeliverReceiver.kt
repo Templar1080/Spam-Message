@@ -11,15 +11,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * OS-Level Pre-Notification SMS Interceptor (SMS_DELIVER_ACTION).
- *
- * When ParsShield is set as Default SMS App:
- *  1. Android Telephony delivers incoming SMS ONLY to this receiver BEFORE any UI or notification exists.
- *  2. Stock SMS apps (Google Messages / Samsung Messages / Xiaomi Messaging) never receive SMS_DELIVER
- *     and never play a chime or vibrate.
- *  3. IranSmsClassifier evaluates the message in < 2ms:
- *     - Advertisement / Spam / Phishing -> silently blocked/dropped; NotificationManager is NEVER called!
- *     - OTP / رمز پویا / Bank / Personal -> saved & notified immediately.
+ * MODE B — Default SMS Pre-Notification Radio Interceptor (SMS_DELIVER_ACTION).
+ * Intercepts SMS before any app receives it AND prevents spam from ever entering Telephony.Sms.Inbox.
+ * Now captures Dual-SIM slot metadata as well.
  */
 class SmsDeliverReceiver : BroadcastReceiver() {
 
@@ -36,6 +30,9 @@ class SmsDeliverReceiver : BroadcastReceiver() {
 
         if (fullBody.isBlank()) return
 
+        val subId = SimCardHelper.extractSubscriptionIdFromIntent(intent)
+        val simSlot = SimCardHelper.resolveSimSlotNumber(context, subId)
+
         val pendingResult = goAsync()
         val app = context.applicationContext as ParsShieldApp
 
@@ -44,14 +41,14 @@ class SmsDeliverReceiver : BroadcastReceiver() {
                 val outcome = app.smsRepository.processIncomingSms(
                     sender = sender,
                     body = fullBody,
-                    timestamp = timestamp
+                    timestamp = timestamp,
+                    simSlot = simSlot
                 )
-                // HARD ZERO-NOTIFICATION GUARANTEE:
-                // Only non-blocked messages ever reach NotificationHelper.
                 if (!outcome.wasDuplicate && !outcome.isBlocked && outcome.entity != null) {
                     NotificationHelper.showAllowedSmsNotification(
                         context = context,
-                        entity = outcome.entity
+                        entity = outcome.entity,
+                        openInStockSmsApp = false
                     )
                 }
             } finally {

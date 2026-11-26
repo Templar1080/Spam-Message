@@ -7,7 +7,9 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
+import android.provider.Telephony
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.RemoteInput
@@ -19,12 +21,16 @@ import ir.parsshield.smsblocker.engine.SmsCategory
 
 /**
  * Posts notifications ONLY for verified non-spam messages (OTPs, Bank alerts, Service & Personal).
- * Blocked advertisements and phishing NEVER reach this class — zero notification is ever created.
+ *
+ * When [openInStockSmsApp] is true (Smart Relay Mode), tapping the notification opens the sender's
+ * conversation directly inside the user's stock Default SMS app (Samsung / Xiaomi / Google Messages)
+ * so they can reply with their stock Dual-SIM UI!
  */
 object NotificationHelper {
 
     const val CHANNEL_OTP = "parsshield_otp_codes"
     const val CHANNEL_MESSAGES = "parsshield_allowed_sms"
+    const val EXTRA_OPEN_THREAD_ADDRESS = "extra_open_thread_address"
 
     fun ensureChannelsCreated(context: Context) {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
@@ -50,8 +56,11 @@ object NotificationHelper {
         manager.createNotificationChannel(msgChannel)
     }
 
-    fun showAllowedSmsNotification(context: Context, entity: SmsEntity) {
-        // Double-safety guard: never post a notification for any blocked entity
+    fun showAllowedSmsNotification(
+        context: Context,
+        entity: SmsEntity,
+        openInStockSmsApp: Boolean = false
+    ) {
         if (entity.isBlocked) return
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -64,11 +73,7 @@ object NotificationHelper {
         ensureChannelsCreated(context)
 
         val notificationId = (entity.id.takeIf { it > 0 } ?: System.currentTimeMillis()).toInt()
-
-        val openIntent = Intent(context, MainActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            putExtra(EXTRA_OPEN_THREAD_ADDRESS, entity.threadAddress)
-        }
+        val openIntent = buildOpenThreadIntent(context, entity, openInStockSmsApp)
         val openPending = PendingIntent.getActivity(
             context,
             notificationId,
@@ -78,7 +83,8 @@ object NotificationHelper {
 
         val isOtp = entity.category == SmsCategory.OTP && !entity.otpCode.isNullOrBlank()
         val channelId = if (isOtp) CHANNEL_OTP else CHANNEL_MESSAGES
-        val senderLabel = entity.displayName ?: entity.sender
+        val simTag = entity.simSlot?.let { " [SIM $it]" }.orEmpty()
+        val senderLabel = (entity.displayName ?: entity.sender) + simTag
 
         val title = when {
             isOtp -> "کد تایید: ${entity.otpCode} • $senderLabel"
@@ -113,10 +119,9 @@ object NotificationHelper {
                 copyPending
             )
         } else {
-            // Inline Reply action for personal mobile senders
             if (entity.category == SmsCategory.PERSONAL) {
                 val remoteInput = RemoteInput.Builder(NotificationActionReceiver.KEY_TEXT_REPLY)
-                    .setLabel("پاسخ پیامک / Reply...")
+                    .setLabel("پاسخ سریع / Reply...")
                     .build()
 
                 val replyIntent = Intent(context, NotificationActionReceiver::class.java).apply {
@@ -124,7 +129,6 @@ object NotificationHelper {
                     putExtra(NotificationActionReceiver.EXTRA_SENDER, entity.sender)
                     putExtra(NotificationActionReceiver.EXTRA_NOTIFICATION_ID, notificationId)
                 }
-                // FLAG_MUTABLE is required by Android ONLY for RemoteInput PendingIntents
                 val replyFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                     PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
                 } else {
@@ -145,7 +149,6 @@ object NotificationHelper {
                 builder.addAction(replyAction)
             }
 
-            // 1-Tap "Block Ad" action in case an unknown 09xx sender sent a disguised ad
             val blockIntent = Intent(context, NotificationActionReceiver::class.java).apply {
                 action = NotificationActionReceiver.ACTION_BLOCK_SENDER
                 putExtra(NotificationActionReceiver.EXTRA_MESSAGE_ID, entity.id)
@@ -167,5 +170,29 @@ object NotificationHelper {
         NotificationManagerCompat.from(context).notify(notificationId, builder.build())
     }
 
-    const val EXTRA_OPEN_THREAD_ADDRESS = "extra_open_thread_address"
+    private fun buildOpenThreadIntent(
+        context: Context,
+        entity: SmsEntity,
+        openInStockSmsApp: Boolean
+    ): Intent {
+        if (openInStockSmsApp) {
+            val stockPkg = Telephony.Sms.getDefaultSmsPackage(context)
+            if (!stockPkg.isNullOrBlank() && stockPkg != context.packageName) {
+                val smsIntent = Intent(
+                    Intent.ACTION_SENDTO,
+                    Uri.parse("smsto:${Uri.encode(entity.sender)}")
+                ).apply {
+                    setPackage(stockPkg)
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                }
+                if (smsIntent.resolveActivity(context.packageManager) != null) {
+                    return smsIntent
+                }
+            }
+        }
+        return Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_OPEN_THREAD_ADDRESS, entity.threadAddress)
+        }
+    }
 }

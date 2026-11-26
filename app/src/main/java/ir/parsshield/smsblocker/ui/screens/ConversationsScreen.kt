@@ -21,6 +21,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Inbox
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shield
@@ -62,8 +63,11 @@ fun ConversationsScreen(
     threads: List<ConversationThread>,
     persianUi: Boolean,
     isDefaultSmsApp: Boolean,
+    hasSmsPermissions: Boolean,
     isScanning: Boolean,
-    onActivateInstantBlock: () -> Unit,
+    onRequestPermissions: () -> Unit,
+    onOpenStockSmsNotificationSettings: () -> Unit,
+    onActivateDefaultSms: () -> Unit,
     onScanInbox: () -> Unit,
     onOpenThread: (ConversationThread) -> Unit,
     onCopyOtp: (String) -> Unit
@@ -88,14 +92,12 @@ fun ConversationsScreen(
     ) {
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Mandatory Instant Radio-Level Blocker Activation Card if not yet Default SMS App
+        // Quick Setup Guide when NOT Default SMS App (Smart Relay Mode vs Default Dual-SIM Mode)
         if (!isDefaultSmsApp) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF064E3B)
-                )
+                colors = CardDefaults.cardColors(containerColor = Color(0xFF064E3B))
             ) {
                 Column(modifier = Modifier.padding(14.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -106,42 +108,85 @@ fun ConversationsScreen(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (persianUi) "بلاک آنی بدون حتی ۱ نوتیفیکیشن!"
-                            else "Zero-Notification Instant Blocker",
+                            text = if (persianUi) "حالت رله هوشمند: حفظ پیام‌رسان اصلی گوشی + صفر نوتیف تبلیغاتی!"
+                            else "Smart Relay Mode: Keep Your Stock SMS App + Zero Ad Notifications!",
                             color = Color.White,
                             fontWeight = FontWeight.ExtraBold,
-                            fontSize = 15.sp
+                            fontSize = 14.sp
                         )
                     }
                     Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = if (persianUi) {
-                            "برای اینکه پیام‌های تبلیغاتی در کسری از ثانیه (قبل از ایجاد هرگونه نوتیفیکیشن، صدا یا ویبره) در سطح سیستم‌عامل بلاک شوند، پارس‌شیلد را به عنوان برنامه پیش‌فرض پیامک انتخاب کنید."
+                            "می‌توانید برنامه پیامک اصلی گوشی‌تان را برای ارسال راحت دو سیم‌کارته نگه دارید! کافیست نوتیف برنامه پیامک اصلی گوشی را خاموش کنید؛ از این پس پارس‌شیلد تبلیغات را بی‌صدا رها کرده و فقط برای کد تایید و پیام‌های مهم نوتیفیکیشن می‌دهد."
                         } else {
-                            "Set ParsShield as your Default SMS App so advertisements are intercepted at the Android radio layer in <2ms—before any notification, sound, or vibration can ever occur."
+                            "Keep your stock SMS app for native Dual-SIM messaging! Just mute notifications on your stock SMS app once—ParsShield will stay silent on ads and notify you ONLY for OTPs, bank alerts & personal chats."
                         },
                         color = Color(0xFFD1FAE5),
                         fontSize = 12.sp,
                         lineHeight = 18.sp
                     )
                     Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = onActivateInstantBlock,
+
+                    if (!hasSmsPermissions) {
+                        Button(
+                            onClick = onRequestPermissions,
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981),
+                                contentColor = Color(0xFF022C22)
+                            )
+                        ) {
+                            Text(
+                                text = if (persianUi) "۱. اعطای دسترسی پیامک و دو سیم‌کارت به پارس‌شیلد"
+                                else "1. Grant SMS & Dual-SIM Permissions",
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                    }
+
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF10B981),
-                            contentColor = Color(0xFF022C22)
-                        )
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text(
-                            text = if (persianUi) "فعال‌سازی بلاک آنی (انتخاب به عنوان پیامک پیش‌فرض)"
-                            else "Activate Instant Blocker (Set Default SMS)",
-                            fontWeight = FontWeight.Bold
-                        )
+                        Button(
+                            onClick = onOpenStockSmsNotificationSettings,
+                            modifier = Modifier.weight(1f),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color(0xFF10B981),
+                                contentColor = Color(0xFF022C22)
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.NotificationsOff,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (persianUi) "خاموش کردن نوتیف پیامک گوشی"
+                                else "Mute Stock SMS Notifications",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onActivateDefaultSms,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(
+                                text = if (persianUi) "یا پیش‌فرض کردن پارس‌شیلد"
+                                else "Or Set as Default SMS",
+                                color = Color(0xFFD1FAE5),
+                                fontSize = 11.sp
+                            )
+                        }
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
         }
 
         Row(
@@ -151,13 +196,13 @@ fun ConversationsScreen(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = if (persianUi) "گفتگوهای پاک" else "Clean Conversations",
+                    text = if (persianUi) "گفتگوهای سالم" else "Clean Conversations",
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = if (persianUi) "فقط پیام‌های شخصی، کد تایید، بانک و خدماتی"
-                    else "Personal chats, OTPs, Shaparak & verified services",
+                    text = if (persianUi) "پیام‌های شخصی، کد تایید، بانک و خدماتی (مجهز به سیم ۱ و ۲)"
+                    else "Personal chats, OTPs, Shaparak & Dual-SIM messaging",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -175,7 +220,7 @@ fun ConversationsScreen(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    if (isScanning) (if (persianUi) "در حال اسکن..." else "Scanning...")
+                    if (isScanning) (if (persianUi) "اسکن..." else "Syncing...")
                     else (if (persianUi) "همگام‌سازی" else "Sync SMS")
                 )
             }
@@ -192,8 +237,8 @@ fun ConversationsScreen(
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             placeholder = {
                 Text(
-                    if (persianUi) "جستجوی شماره، متن پیامک یا کد تایید..."
-                    else "Search sender, text, or OTP..."
+                    if (persianUi) "جستجوی شماره، مخاطب، متن یا کد تایید..."
+                    else "Search sender, contact, text, or OTP..."
                 )
             }
         )
@@ -262,6 +307,9 @@ private fun ThreadRowCard(
     }
     val title = thread.displayName ?: thread.rawSender
     val initial = title.firstOrNull { it.isLetterOrDigit() }?.uppercase() ?: "#"
+    val simBadge = msg.simSlot?.let {
+        if (persianUi) " • سیم $it" else " • SIM $it"
+    }.orEmpty()
 
     Card(
         modifier = Modifier
@@ -309,7 +357,7 @@ private fun ThreadRowCard(
                         modifier = Modifier.weight(1f)
                     )
                     Text(
-                        text = formattedDate,
+                        text = "$formattedDate$simBadge",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
