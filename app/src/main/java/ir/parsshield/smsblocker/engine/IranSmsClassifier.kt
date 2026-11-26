@@ -4,11 +4,11 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 
 /**
- * Multi-layer, 100% offline Iranian SMS classification engine.
+ * Multi-layer, 100% offline Iranian SMS classification engine (v2 — Pre-Notification Radio Shield).
  *
- * Priority hierarchy guarantees ZERO false-positive blocking of OTP login codes
- * and Shaparak Dynamic PINs (رمز پویا), even when sent over shared 1000/2000/3000/5000/9000
- * bulk gateways that automatically append "لغو11".
+ * Runs inside SmsDeliverReceiver in < 2ms BEFORE Android creates any notification object:
+ *  - Spam, Advertisements & Phishing -> shouldBlock = true -> 0 notifications, 0 sound, 0 screen wake
+ *  - OTPs, Shaparak رمز پویا, Bank Ledgers, Service Alerts & Personal SMS -> delivered immediately
  */
 object IranSmsClassifier {
 
@@ -26,7 +26,7 @@ object IranSmsClassifier {
     )
 
     private val EXPLICIT_PERSIAN_OTP_REGEX = Regex(
-        """(?:کد\s*تا[ییئ]+د|کد\s*ورود|کد\s*فعال\s*سازی|کد\s*امنیتی|کد\s*احراز\s*هویت|کد\s*اعتبار\s*سنجی|کد\s*یک\s*بار\s*مصرف|رمز\s*یک\s*بار\s*مصرف|رمز\s*ورود|رمز\s*موقت|کد\s*بازیابی|کد\s*تغییر\s*رمز|کد\s*فراموشی|کد\s*ثبت\s*نام|کد\s*عضویت|کد\s*محرمانه|کد\s*تحویل|پنجره\s*ملی\s*خدمات\s*دولت\s*هوشمند|این\s*کد\s*را\s*در\s*اختیار)""",
+        """(?:کد\s*تا[ییئ]+د(?:یه)?|کد\s*ورود|کد\s*فعال\s*سازی|کد\s*امنیتی|کد\s*احراز\s*هویت|کد\s*اعتبار\s*سنجی|کد\s*یک\s*بار\s*مصرف|رمز\s*یک\s*بار\s*مصرف|رمز\s*ورود|رمز\s*(?:عبور\s*)?موقت|کد\s*بازیابی|کد\s*تغییر\s*رمز|کد\s*فراموشی|کد\s*ثبت\s*نام|کد\s*عضویت|کد\s*محرمانه|کد\s*تحویل|کد\s*سجام|کد\s*امضا|پنجره\s*ملی\s*خدمات\s*دولت\s*هوشمند|این\s*کد\s*را\s*در\s*اختیار)""",
         CI
     )
 
@@ -41,20 +41,25 @@ object IranSmsClassifier {
     )
 
     private val STRONG_AD_BLOCKER_FOR_GENERIC_CODE_REGEX = Regex(
-        """(?:تخفیف|حراج|فروش\s*ویژه|جشنواره|کاشت\s*مو|لیزر|ایمپلنت|بوتاکس|ویلا|پیش\s*فروش|شرط\s*بندی|کازینو|انفجار|بونوس|وام\s*فوری|قرعه\s*کشی|خرید\s*از\s*لینک)""",
+        """(?:تخفیف|حراج|فروش|جشنواره|کاشت\s*مو|لیزر|ایمپلنت|بوتاکس|ویلا|پیش\s*فروش|شرط\s*بندی|کازینو|انفجار|بونوس|وام|قرعه\s*کشی|خرید\s*از|مشاوره|قسط|تومان|ریال|%)""",
         CI
     )
 
     private val SHORT_STRUCTURAL_OTP_REGEX = Regex(
-        """(?:^|[\s:\n])(?:کد(?:\s*شما)?|code)\s*[:=-]?\s*(\d{4,8})(?!\d)""",
+        """(?:^|[\s:\n])(?:کد(?:\s*شما)?|رمز|code)\s*[:=-]?\s*(\d{4,8})(?!\d)""",
         CI_ML
+    )
+
+    private val TRAILING_LAGHV_REGEX = Regex("""\s*لغو\s*11\s*$""", CI)
+    private val MINIMAL_BRAND_OTP_REGEX = Regex(
+        """^(?:[\u0600-\u06FFA-Za-z0-9\s._-]{1,24}\s*[:=-]\s*)?(\d{4,8})$"""
     )
 
     private val GOOGLE_CODE_REGEX = Regex("""\bG-(\d{6})\b""", CI)
     private val WEBOTP_EXTRACT_REGEX = Regex("""@[a-z0-9.-]+\.[a-z]{2,}\s+#(\d{4,8})(?!\d)""", CI)
 
     private val AFTER_KEYWORD_OTP_REGEX = Regex(
-        """(?:رمز\s*پویا|رمز\s*دوم|پویا|کد\s*تا[ییئ]+د|کد\s*ورود|کد\s*فعال\s*سازی|کد\s*امنیتی|کد\s*احراز\s*هویت|کد\s*اعتبار\s*سنجی|کد\s*یک\s*بار\s*مصرف|رمز\s*یک\s*بار\s*مصرف|رمز\s*ورود|رمز\s*موقت|کد\s*بازیابی|کد\s*ثبت\s*نام|کد\s*تحویل|کد\s*شما|verification\s*code|login\s*code|security\s*code|confirmation\s*code|activation\s*code|auth\s*code|\botp\b|passcode|(?:kode?|code)\s*(?:taeed|taeid|vorood|vorud|faalsazi)|ramz(?:e)?\s*(?:pouya|pooya)|(?:^|[\s\n])کد|(?:^|[\s\n])code)[^\d]{0,36}?(\d{4,8})(?!\d)""",
+        """(?:رمز\s*پویا|رمز\s*دوم|پویا|کد\s*تا[ییئ]+د(?:یه)?|کد\s*ورود|کد\s*فعال\s*سازی|کد\s*امنیتی|کد\s*احراز\s*هویت|کد\s*اعتبار\s*سنجی|کد\s*یک\s*بار\s*مصرف|رمز\s*یک\s*بار\s*مصرف|رمز\s*ورود|رمز\s*(?:عبور\s*)?موقت|کد\s*بازیابی|کد\s*ثبت\s*نام|کد\s*تحویل|کد\s*سجام|کد\s*شما|verification\s*code|login\s*code|security\s*code|confirmation\s*code|activation\s*code|auth\s*code|\botp\b|passcode|(?:kode?|code)\s*(?:taeed|taeid|vorood|vorud|faalsazi)|ramz(?:e)?\s*(?:pouya|pooya)|(?:^|[\s\n])کد|(?:^|[\s\n])رمز|(?:^|[\s\n])code)[^\d]{0,36}?(\d{4,8})(?!\d)""",
         CI_ML
     )
 
@@ -89,7 +94,7 @@ object IranSmsClassifier {
     )
 
     private val BANK_TRANSACTION_ACTION_REGEX = Regex(
-        """(?:برداشت|واریز|انتقال\s*وجه|کارت\s*به\s*کارت|پایا|ساتنا|خرید\s*(?:با\s*کارت|کالا|پایانه|اینترنتی|:|\d)|تراکنش\s*خرید|پرداخت\s*قبض|سررسید\s*قسط|اقساط\s*تسهیلات|چک\s*صیادی|سود\s*سپرده|افزایش\s*موجودی|کاهش\s*موجودی)""",
+        """(?:برداشت|واریز|انتقال\s*وجه|کارت\s*به\s*کارت|پایا|ساتنا|خرید\s*(?:با\s*کارت|کالا|پایانه|اینترنتی|:|\d)|تراکنش\s*خرید|پرداخت\s*قبض|سررسید\s*قسط|اقساط\s*تسهیلات|چک\s*صیادی|سود\s*سپرده|افزایش\s*موجودی|کاهش\s*موجودی|کارت\s*بانکی\s*شما\s*صادر)""",
         CI
     )
     private val BANK_LEDGER_CONTEXT_REGEX = Regex(
@@ -106,11 +111,11 @@ object IranSmsClassifier {
         CI
     )
     private val SERVICE_ORDER_POST_REGEX = Regex(
-        """(?:سفارش\s*شما.*(?:ثبت|ارسال|آماده|تحویل)|کد\s*تحویل\s*(?:سفارش|مرسوله)?|(?:مرسوله|بسته)\s*(?:پستی|شما).*(?:تحویل|ارسال|توزیع)|کد\s*رهگیری\s*(?:مرسوله|پستی))""",
+        """(?:سفارش\s*شما.*(?:ثبت|ارسال|آماده|تحویل)|کد\s*تحویل\s*(?:سفارش|مرسوله)?|(?:مرسوله|بسته)\s*(?:پستی|شما|تیپاکس).*(?:تحویل|ارسال|توزیع)|کد\s*رهگیری\s*(?:مرسوله|پستی)|بارنامه)""",
         CI
     )
     private val SERVICE_TRAVEL_REGEX = Regex(
-        """(?:(?:بلیط|بلیت)\s*(?:پرواز|قطار|اتوبوس)|شماره\s*پرواز|ساعت\s*حرکت|کارت\s*پرواز|رزرو\s*هتل.*قطعی)""",
+        """(?:(?:بلیط|بلیت)\s*(?:پرواز|قطار|اتوبوس)|شماره\s*پرواز|ساعت\s*حرکت|کارت\s*پرواز|تاخیر\s*پرواز|رزرو\s*هتل.*قطعی)""",
         CI
     )
     private val SERVICE_RIDE_REGEX = Regex(
@@ -118,15 +123,15 @@ object IranSmsClassifier {
         CI
     )
     private val SERVICE_MEDICAL_REGEX = Regex(
-        """(?:نوبت\s*(?:شما|پزشکی).*(?:ثبت|تاریخ|ساعت)|یادآوری\s*نوبت|نسخه\s*الکترونیک.*ثبت|بیمه\s*(?:تامین\s*اجتماعی|سلامت).*نسخه)""",
+        """(?:نوبت\s*(?:شما|پزشکی).*(?:ثبت|تاریخ|ساعت)|یادآوری\s*نوبت|نسخه\s*الکترونیک.*ثبت|بیمه\s*(?:تامین\s*اجتماعی|سلامت).*نسخه|جواب\s*آزمایش)""",
         CI
     )
     private val SERVICE_TELECOM_UTILITY_REGEX = Regex(
-        """(?:(?:درصد|حجم|مگابایت|گیگابایت).*(?:بسته\s*اینترنت|اینترنت\s*شما).*(?:مصرف|باقی|اتمام)|بسته\s*اینترنت.*فعال\s*شد|(?:قبض|صورتحساب).*(?:شناسه\s*قبض|شناسه\s*پرداخت|مبلغ\s*قابل\s*پرداخت))""",
+        """(?:(?:درصد|حجم|مگابایت|گیگابایت).*(?:بسته\s*اینترنت|اینترنت\s*شما).*(?:مصرف|باقی|اتمام)|بسته\s*اینترنت.*فعال\s*شد|(?:قبض|صورتحساب).*(?:شناسه\s*قبض|شناسه\s*پرداخت|مبلغ\s*قابل\s*پرداخت)|قطعی\s*برق)""",
         CI
     )
     private val SERVICE_GOV_NOTICE_REGEX = Regex(
-        """(?:ابلاغیه.*سامانه\s*ثنا|پلیس\s*\+?10|تعویض\s*پلاک|گذرنامه.*تحویل)""",
+        """(?:ابلاغیه.*سامانه\s*ثنا|پلیس\s*\+?10|تعویض\s*پلاک|گذرنامه.*تحویل|سازمان\s*سنجش|انتخاب\s*واحد)""",
         CI
     )
 
@@ -135,7 +140,7 @@ object IranSmsClassifier {
         CI
     )
     private val SPAM_DISCOUNT_REGEX = Regex(
-        """(?:تخفیف|%\s*تخفیف|درصد\s*تخفیف|حراج|فروش\s*ویژه|فروش\s*فوق\s*العاده|جشنواره\s*(?:فروش|تخفیف|پاییزه|زمستانه|بهاره|تابستانه|یلدا|نوروز)?|آفر\s*ویژه|افر\s*ویژه|پیشنهاد\s*شگفت|زیر\s*قیمت|کد\s*تخفیف|هدیه\s*ویژه|بن\s*خرید|خرید\s*اقساطی|اقساط\s*بدون\s*(?:بهره|کارمزد|پیش\s*پرداخت)|دم\s*قسط)""",
+        """(?:تخفیف|%\s*تخفیف|درصد\s*تخفیف|حراج|فروش\s*ویژه|فروش\s*فوق\s*العاده|جشنواره\s*(?:فروش|تخفیف|پاییزه|زمستانه|بهاره|تابستانه|یلدا|نوروز)?|آفر\s*ویژه|افر\s*ویژه|پیشنهاد\s*شگفت|زیر\s*قیمت|کد\s*تخفیف|هدیه\s*ویژه|بن\s*خرید|خرید\s*اقساطی|اقساط\s*بدون\s*(?:بهره|کارمزد|پیش\s*پرداخت)|دم\s*قسط|پخش\s*عمده|زیر\s*قیمت\s*بازار|ارسال\s*رایگان)""",
         CI
     )
     private val SPAM_GAMBLING_REGEX = Regex(
@@ -147,7 +152,7 @@ object IranSmsClassifier {
         CI
     )
     private val SPAM_REAL_ESTATE_REGEX = Regex(
-        """(?:پیش\s*فروش\s*(?:آپارتمان|واحد|برج)|ویلا\s*(?:شمال|مدرن|جنگلی|ساحلی|استخردار)|زمین\s*(?:سنددار|شهرکی)|تهاتر\s*(?:ملک|ویلا|آپارتمان)|سرمایه\s*گذاری\s*ملکی|فایلینگ\s*املاک|اقساط\s*بلند\s*مدت.*(?:ویلا|زمین|آپارتمان))""",
+        """(?:پیش\s*فروش\s*(?:آپارتمان|واحد|برج|خودرو)|ویلا\s*(?:شمال|مدرن|جنگلی|ساحلی|استخردار)|زمین\s*(?:سنددار|شهرکی)|تهاتر\s*(?:ملک|ویلا|آپارتمان)|سرمایه\s*گذاری\s*ملکی|فایلینگ\s*املاک|اقساط\s*بلند\s*مدت.*(?:ویلا|زمین|آپارتمان))""",
         CI
     )
     private val SPAM_LOAN_CRYPTO_VISA_REGEX = Regex(
@@ -163,18 +168,13 @@ object IranSmsClassifier {
         CI
     )
     private val SPAM_MARKETING_CTA_REGEX = Regex(
-        """(?:عدد\s*\d+\s*را\s*(?:به\s*.*\s*)?ارسال|ارسال\s*عدد\s*\d+|مشاوره\s*رایگان|همین\s*حالا\s*(?:کلیک|خرید|تماس)|لینک\s*(?:خرید|ثبت\s*نام|زیر)|ظرفیت\s*محدود|فقط\s*تا\s*پایان\s*امشب|مهلت\s*استفاده)""",
+        """(?:عدد\s*\d+\s*را\s*(?:به\s*.*\s*)?ارسال|ارسال\s*(?:عدد|کلمه)\s*\S+|مشاوره\s*رایگان|همین\s*حالا\s*(?:کلیک|خرید|تماس)|لینک\s*(?:خرید|ثبت\s*نام|زیر)|ظرفیت\s*محدود|فقط\s*تا\s*پایان\s*امشب|مهلت\s*استفاده)""",
         CI
     )
     private val SHORTENED_PROMO_LINK_REGEX = Regex(
         """\b(?:yun\.ir|b2n\.ir|bit\.ly|cutt\.ly|zaya\.io|zil\.ink|t\.me)/""",
         CI
     )
-    private val BUSINESS_CONTEXT_REGEX = Regex(
-        """(?:مشاوره|رزرو|تماس|آدرس|کلینیک|فروشگاه|گالری|مزون|آموزشگاه|خدمات)""",
-        CI
-    )
-    private val CALLBACK_PHONE_REGEX = Regex("""(?:\b021\d{6,8}\b|\b09\d{9}\b)""")
     private val CARRIER_PROMO_REGEX = Regex(
         """(?:جشنواره|برنده|جایزه|امتیاز|بسته\s*پیشنهادی|هدیه|تخفیف|سرگرمی)""",
         CI
@@ -201,13 +201,14 @@ object IranSmsClassifier {
         isSavedContact: Boolean = false,
         filterMode: FilterMode = FilterMode.ALLOW_OTP_AND_BANK,
         customRules: List<CustomRule> = emptyList(),
-        neverBlockOtpEvenFromBlocked: Boolean = true
+        neverBlockOtpEvenFromBlocked: Boolean = true,
+        zeroToleranceCommercialPanels: Boolean = true
     ): ClassificationResult {
         val normalized = TextNormalizer.normalizeSmsText(body)
         val senderInfo = SenderAnalyzer.analyze(sender, isSavedContact)
         val signals = mutableListOf<MatchedSignal>()
 
-        val otpEval = detectOtp(normalized)
+        val otpEval = detectOtp(normalized, senderInfo.senderType)
 
         // LAYER 1: Custom User Rules & Saved Contacts
         for (rule in customRules) {
@@ -256,7 +257,7 @@ object IranSmsClassifier {
                             otpCode = null,
                             senderType = senderInfo.senderType,
                             normalizedPreview = normalized,
-                            reasonSummary = "Blocked by your custom rule (${rule.pattern}).",
+                            reasonSummary = "Instantly blocked by your custom rule (${rule.pattern}).",
                             signals = signals
                         )
                     }
@@ -302,7 +303,7 @@ object IranSmsClassifier {
                 otpCode = null,
                 senderType = senderInfo.senderType,
                 normalizedPreview = normalized,
-                reasonSummary = "Blocked: SMS contains a malicious .apk download link.",
+                reasonSummary = "Blocked silently: Malicious .apk download link.",
                 signals = signals
             )
         }
@@ -325,7 +326,7 @@ object IranSmsClassifier {
                 otpCode = null,
                 senderType = senderInfo.senderType,
                 normalizedPreview = normalized,
-                reasonSummary = "Blocked Phishing: Fake Judiciary/Sana notice (official ADLIRAN never sends links or texts from 09xx numbers).",
+                reasonSummary = "Blocked silently: Fake Judiciary/Sana phishing (ADLIRAN never sends links or texts from 09xx numbers).",
                 signals = signals
             )
         }
@@ -348,7 +349,7 @@ object IranSmsClassifier {
                 otpCode = null,
                 senderType = senderInfo.senderType,
                 normalizedPreview = normalized,
-                reasonSummary = "Blocked Phishing: Suspicious subsidy, postal fee, or account-freeze message with link.",
+                reasonSummary = "Blocked silently: Suspicious subsidy, postal fee, or account-freeze message with link.",
                 signals = signals
             )
         }
@@ -368,7 +369,7 @@ object IranSmsClassifier {
                 otpCode = otpEval.otpCode,
                 senderType = senderInfo.senderType,
                 normalizedPreview = normalized,
-                reasonSummary = "Protected OTP (${otpEval.otpCode}) — verification codes are never blocked.",
+                reasonSummary = "Protected OTP (${otpEval.otpCode}) — delivered immediately.",
                 signals = signals
             )
         }
@@ -395,9 +396,9 @@ object IranSmsClassifier {
                 senderType = senderInfo.senderType,
                 normalizedPreview = normalized,
                 reasonSummary = if (blockedInStrict) {
-                    "Bank transaction alert (filtered because Strict OTP-Only mode is enabled)."
+                    "Bank alert (silenced in Strict OTP-Only mode)."
                 } else {
-                    "Allowed: Legitimate bank / Shaparak transaction alert."
+                    "Allowed: Verified bank / Shaparak transaction alert."
                 },
                 signals = signals
             )
@@ -424,13 +425,13 @@ object IranSmsClassifier {
             return ClassificationResult(
                 category = SmsCategory.SERVICE_ALERT,
                 shouldBlock = blockedInStrict,
-                confidence = 90,
+                confidence = 91,
                 spamScore = 5,
                 otpCode = null,
                 senderType = senderInfo.senderType,
                 normalizedPreview = normalized,
                 reasonSummary = if (blockedInStrict) {
-                    "Service notification (filtered because Strict OTP-Only mode is enabled)."
+                    "Service notification (silenced in Strict OTP-Only mode)."
                 } else {
                     "Allowed: Non-promotional service / delivery / utility update."
                 },
@@ -438,63 +439,63 @@ object IranSmsClassifier {
             )
         }
 
-        // LAYER 6: Weighted Advertisement & Spam Scoring Engine
+        // LAYER 6: Weighted Advertisement, Commercial & Spam Scoring Engine
         var spamScore = 0
 
         if (SPAM_OPT_OUT_REGEX.containsMatchIn(normalized)) {
-            spamScore += 55
+            spamScore += 60
             signals += MatchedSignal(
                 "OPT_OUT_FOOTER",
-                "Contains bulk promotional opt-out footer (e.g. لغو11 / unsubscribe)",
-                55
+                "Contains bulk promotional opt-out footer (لغو11 / unsubscribe)",
+                60
             )
         }
         if (SPAM_DISCOUNT_REGEX.containsMatchIn(normalized)) {
-            spamScore += 50
+            spamScore += 55
             signals += MatchedSignal(
                 "PROMO_DISCOUNT_TERMS",
-                "Promotional discount, sale, or installment marketing offer",
-                50
+                "Promotional discount, sale, wholesale, or installment marketing offer",
+                55
             )
         }
         if (SPAM_GAMBLING_REGEX.containsMatchIn(normalized)) {
-            spamScore += 85
+            spamScore += 90
             signals += MatchedSignal(
                 "GAMBLING_CASINO_SPAM",
                 "Gambling, betting, or casino spam keywords",
-                85
+                90
             )
         }
         if (SPAM_BEAUTY_CLINIC_REGEX.containsMatchIn(normalized)) {
-            spamScore += 55
+            spamScore += 60
             signals += MatchedSignal(
                 "BEAUTY_DENTAL_CLINIC_AD",
                 "Cosmetic, laser, hair-transplant, or dental clinic advertisement",
-                55
+                60
             )
         }
         if (SPAM_REAL_ESTATE_REGEX.containsMatchIn(normalized)) {
-            spamScore += 55
+            spamScore += 60
             signals += MatchedSignal(
                 "REAL_ESTATE_VILLA_AD",
                 "Real estate pre-sale or northern villa advertisement",
-                55
+                60
             )
         }
         if (SPAM_LOAN_CRYPTO_VISA_REGEX.containsMatchIn(normalized)) {
-            spamScore += 55
+            spamScore += 60
             signals += MatchedSignal(
                 "LOAN_CRYPTO_VISA_SPAM",
                 "Instant loan, crypto signal, guaranteed profit, or visa spam",
-                55
+                60
             )
         }
         if (SPAM_LOTTERY_SEMINAR_RETAIL_REGEX.containsMatchIn(normalized)) {
-            spamScore += 50
+            spamScore += 55
             signals += MatchedSignal(
                 "LOTTERY_RETAIL_PROMO",
                 "Lottery, VAS trap, seminar, store opening, or local service spam",
-                50
+                55
             )
         }
         if (SPAM_FINGLISH_ENGLISH_REGEX.containsMatchIn(normalized)) {
@@ -506,67 +507,68 @@ object IranSmsClassifier {
             )
         }
         if (SPAM_MARKETING_CTA_REGEX.containsMatchIn(normalized)) {
-            spamScore += 35
+            spamScore += 40
             signals += MatchedSignal(
                 "MARKETING_CTA",
-                "Marketing call-to-action (send digit X, free consultation, urgency)",
-                35
+                "Marketing call-to-action (send digit/word, free consultation, urgency)",
+                40
             )
         }
         if (SHORTENED_PROMO_LINK_REGEX.containsMatchIn(normalized)) {
-            spamScore += 25
+            spamScore += 30
             signals += MatchedSignal(
                 "SHORTENED_PROMO_LINK",
                 "Contains shortened marketing link (yun.ir / b2n.ir / bit.ly / t.me)",
-                25
+                30
             )
         }
 
-        when (senderInfo.senderType) {
-            SenderType.IRAN_BULK_SHORTCODE -> {
-                val bulkWeight = if (senderInfo.bulkPrefix == "5000" || senderInfo.bulkPrefix == "2000") 25 else 20
-                spamScore += bulkWeight
-                signals += MatchedSignal(
-                    "BULK_SMS_SHORTCODE",
-                    "Sent from Iranian bulk SMS panel (${senderInfo.bulkPrefix}...)",
-                    bulkWeight
-                )
-                if (BUSINESS_CONTEXT_REGEX.containsMatchIn(normalized) && CALLBACK_PHONE_REGEX.containsMatchIn(normalized)) {
-                    spamScore += 30
+        if (
+            zeroToleranceCommercialPanels &&
+            (senderInfo.senderType == SenderType.IRAN_BULK_SHORTCODE ||
+                senderInfo.senderType == SenderType.IRAN_LANDLINE_PANEL)
+        ) {
+            spamScore += 55
+            signals += MatchedSignal(
+                "COMMERCIAL_SMS_PANEL_NON_TRANSACTIONAL",
+                if (senderInfo.senderType == SenderType.IRAN_BULK_SHORTCODE) {
+                    "Non-OTP / non-bank message from bulk SMS panel (${senderInfo.bulkPrefix}...)"
+                } else {
+                    "Non-OTP / non-service message from commercial landline SMS panel"
+                },
+                55
+            )
+        } else {
+            when (senderInfo.senderType) {
+                SenderType.IRAN_BULK_SHORTCODE -> {
+                    val bulkWeight = if (senderInfo.bulkPrefix == "5000" || senderInfo.bulkPrefix == "2000") 25 else 20
+                    spamScore += bulkWeight
                     signals += MatchedSignal(
-                        "BULK_CALLBACK_BUSINESS_AD",
-                        "Bulk panel message advertising business callback number",
-                        30
+                        "BULK_SMS_SHORTCODE",
+                        "Sent from Iranian bulk SMS panel (${senderInfo.bulkPrefix}...)",
+                        bulkWeight
                     )
                 }
-            }
-            SenderType.IRAN_LANDLINE_PANEL -> {
-                spamScore += 25
-                signals += MatchedSignal(
-                    "LANDLINE_SMS_PANEL",
-                    "Sent from virtual landline SMS panel (021 / provincial prefix)",
-                    25
-                )
-                if (BUSINESS_CONTEXT_REGEX.containsMatchIn(normalized)) {
-                    spamScore += 30
+                SenderType.IRAN_LANDLINE_PANEL -> {
+                    spamScore += 25
                     signals += MatchedSignal(
-                        "LANDLINE_BUSINESS_PROMO",
-                        "Landline panel promoting commercial services",
-                        30
+                        "LANDLINE_SMS_PANEL",
+                        "Sent from virtual landline SMS panel",
+                        25
                     )
                 }
-            }
-            SenderType.CARRIER_SENDER -> {
-                if (CARRIER_PROMO_REGEX.containsMatchIn(normalized)) {
-                    spamScore += 45
-                    signals += MatchedSignal(
-                        "CARRIER_PROMO_BLAST",
-                        "Mobile carrier promotional / VAS marketing blast",
-                        45
-                    )
+                SenderType.CARRIER_SENDER -> {
+                    if (zeroToleranceCommercialPanels || CARRIER_PROMO_REGEX.containsMatchIn(normalized)) {
+                        spamScore += 55
+                        signals += MatchedSignal(
+                            "CARRIER_PROMO_BLAST",
+                            "Non-quota carrier promotional / VAS marketing message",
+                            55
+                        )
+                    }
                 }
+                else -> Unit
             }
-            else -> Unit
         }
 
         val cappedScore = min(100, spamScore)
@@ -575,12 +577,12 @@ object IranSmsClassifier {
             return ClassificationResult(
                 category = SmsCategory.SPAM_AD,
                 shouldBlock = filterMode != FilterMode.MONITOR_ONLY,
-                confidence = min(99, 60 + ((cappedScore - 50) * 0.78).roundToInt()),
+                confidence = min(99, 65 + ((cappedScore - 50) * 0.68).roundToInt()),
                 spamScore = cappedScore,
                 otpCode = null,
                 senderType = senderInfo.senderType,
                 normalizedPreview = normalized,
-                reasonSummary = "Blocked: Detected as advertisement / promotional spam.",
+                reasonSummary = "Instantly blocked at radio level (0 notifications): Promotional / commercial SMS.",
                 signals = signals
             )
         }
@@ -599,12 +601,12 @@ object IranSmsClassifier {
             return ClassificationResult(
                 category = SmsCategory.SPAM_AD,
                 shouldBlock = true,
-                confidence = 85,
+                confidence = 88,
                 spamScore = maxOf(cappedScore, 60),
                 otpCode = null,
                 senderType = senderInfo.senderType,
                 normalizedPreview = normalized,
-                reasonSummary = "Blocked by Strict OTP-Only mode (non-OTP message from bulk/carrier line).",
+                reasonSummary = "Blocked silently by Strict OTP-Only mode.",
                 signals = signals
             )
         }
@@ -612,18 +614,18 @@ object IranSmsClassifier {
         // LAYER 7: Clean Personal / Conversational SMS
         signals += MatchedSignal(
             "CLEAN_CONVERSATIONAL",
-            "Conversational message with no spam or phishing indicators",
+            "Conversational message from personal sender with no spam indicators",
             -50
         )
         return ClassificationResult(
             category = SmsCategory.PERSONAL,
             shouldBlock = false,
-            confidence = 88,
+            confidence = 90,
             spamScore = cappedScore,
             otpCode = null,
             senderType = senderInfo.senderType,
             normalizedPreview = normalized,
-            reasonSummary = "Allowed: Personal or normal conversational message.",
+            reasonSummary = "Allowed: Personal conversational message.",
             signals = signals
         )
     }
@@ -636,7 +638,7 @@ object IranSmsClassifier {
         val signalLabel: String = ""
     )
 
-    private fun detectOtp(normalized: String): OtpEval {
+    private fun detectOtp(normalized: String, senderType: SenderType): OtpEval {
         val hasPromoCodeTrap = PROMO_CODE_EXCLUSION_REGEX.containsMatchIn(normalized)
 
         if (SHAPARAK_DYNAMIC_OTP_REGEX.containsMatchIn(normalized)) {
@@ -696,9 +698,30 @@ object IranSmsClassifier {
                 return OtpEval(
                     isOtp = true,
                     otpCode = match.groupValues[1],
-                    confidence = 93,
+                    confidence = 94,
                     signalCode = "SHORT_STRUCTURAL_OTP",
                     signalLabel = "Concise login/verification code format"
+                )
+            }
+        }
+
+        val strippedOptOut = normalized.replace(TRAILING_LAGHV_REGEX, "").trim()
+        if (
+            !hasPromoCodeTrap &&
+            strippedOptOut.length <= 60 &&
+            !URL_IN_SMS_REGEX.containsMatchIn(strippedOptOut) &&
+            !STRONG_AD_BLOCKER_FOR_GENERIC_CODE_REGEX.containsMatchIn(strippedOptOut) &&
+            (senderType == SenderType.IRAN_BULK_SHORTCODE ||
+                senderType == SenderType.ALPHANUMERIC_BRAND ||
+                senderType == SenderType.KNOWN_BANK_OR_GOV)
+        ) {
+            MINIMAL_BRAND_OTP_REGEX.matchEntire(strippedOptOut)?.let { match ->
+                return OtpEval(
+                    isOtp = true,
+                    otpCode = match.groupValues[1],
+                    confidence = 92,
+                    signalCode = "MINIMAL_BRAND_OTP",
+                    signalLabel = "Minimal brand/shortcode verification PIN"
                 )
             }
         }

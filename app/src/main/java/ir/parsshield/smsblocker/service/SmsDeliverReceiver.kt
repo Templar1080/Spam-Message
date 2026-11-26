@@ -11,10 +11,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * OS-level Default SMS Receiver (SMS_DELIVER_ACTION).
- * Reconstructs multi-part UTF-16 Persian SMS segments before classifying,
- * silently quarantines spam/phishing with zero sound or lock-screen wake,
- * and delivers instant 1-tap OTP notifications for verification codes.
+ * OS-Level Pre-Notification SMS Interceptor (SMS_DELIVER_ACTION).
+ *
+ * When ParsShield is set as Default SMS App:
+ *  1. Android Telephony delivers incoming SMS ONLY to this receiver BEFORE any UI or notification exists.
+ *  2. Stock SMS apps (Google Messages / Samsung Messages / Xiaomi Messaging) never receive SMS_DELIVER
+ *     and never play a chime or vibrate.
+ *  3. IranSmsClassifier evaluates the message in < 2ms:
+ *     - Advertisement / Spam / Phishing -> silently blocked/dropped; NotificationManager is NEVER called!
+ *     - OTP / رمز پویا / Bank / Personal -> saved & notified immediately.
  */
 class SmsDeliverReceiver : BroadcastReceiver() {
 
@@ -39,14 +44,14 @@ class SmsDeliverReceiver : BroadcastReceiver() {
                 val outcome = app.smsRepository.processIncomingSms(
                     sender = sender,
                     body = fullBody,
-                    timestamp = timestamp,
-                    writeAllowedToSystemProvider = true
+                    timestamp = timestamp
                 )
-                if (!outcome.wasDuplicate && !outcome.entity.isBlocked) {
+                // HARD ZERO-NOTIFICATION GUARANTEE:
+                // Only non-blocked messages ever reach NotificationHelper.
+                if (!outcome.wasDuplicate && !outcome.isBlocked && outcome.entity != null) {
                     NotificationHelper.showAllowedSmsNotification(
                         context = context,
-                        entity = outcome.entity,
-                        companionOtpHelperOnly = false
+                        entity = outcome.entity
                     )
                 }
             } finally {

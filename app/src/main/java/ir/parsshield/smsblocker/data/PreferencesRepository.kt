@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import ir.parsshield.smsblocker.engine.FilterMode
@@ -17,9 +18,12 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 data class ShieldSettings(
     val shieldEnabled: Boolean = true,
     val filterMode: FilterMode = FilterMode.ALLOW_OTP_AND_BANK,
+    val zeroToleranceCommercialPanels: Boolean = true,
+    val dropSpamCompletely: Boolean = false,
     val neverBlockOtpEvenFromBlocked: Boolean = true,
-    val autoCopyOtpToClipboard: Boolean = false,
-    val otpQuickNotificationBanner: Boolean = true
+    val autoCopyOtpToClipboard: Boolean = true,
+    val persianUi: Boolean = true,
+    val vaporizedCount: Int = 0
 )
 
 class PreferencesRepository(private val context: Context) {
@@ -27,9 +31,12 @@ class PreferencesRepository(private val context: Context) {
     private object Keys {
         val SHIELD_ENABLED = booleanPreferencesKey("shield_enabled")
         val FILTER_MODE = stringPreferencesKey("filter_mode")
+        val ZERO_TOLERANCE_PANELS = booleanPreferencesKey("zero_tolerance_panels")
+        val DROP_SPAM_COMPLETELY = booleanPreferencesKey("drop_spam_completely")
         val NEVER_BLOCK_OTP = booleanPreferencesKey("never_block_otp")
         val AUTO_COPY_OTP = booleanPreferencesKey("auto_copy_otp")
-        val OTP_QUICK_BANNER = booleanPreferencesKey("otp_quick_banner")
+        val PERSIAN_UI = booleanPreferencesKey("persian_ui")
+        val VAPORIZED_COUNT = intPreferencesKey("vaporized_count")
     }
 
     val settingsFlow: Flow<ShieldSettings> = context.dataStore.data.map { prefs ->
@@ -39,9 +46,12 @@ class PreferencesRepository(private val context: Context) {
         ShieldSettings(
             shieldEnabled = prefs[Keys.SHIELD_ENABLED] ?: true,
             filterMode = filterMode,
+            zeroToleranceCommercialPanels = prefs[Keys.ZERO_TOLERANCE_PANELS] ?: true,
+            dropSpamCompletely = prefs[Keys.DROP_SPAM_COMPLETELY] ?: false,
             neverBlockOtpEvenFromBlocked = prefs[Keys.NEVER_BLOCK_OTP] ?: true,
-            autoCopyOtpToClipboard = prefs[Keys.AUTO_COPY_OTP] ?: false,
-            otpQuickNotificationBanner = prefs[Keys.OTP_QUICK_BANNER] ?: true
+            autoCopyOtpToClipboard = prefs[Keys.AUTO_COPY_OTP] ?: true,
+            persianUi = prefs[Keys.PERSIAN_UI] ?: true,
+            vaporizedCount = prefs[Keys.VAPORIZED_COUNT] ?: 0
         )
     }
 
@@ -55,6 +65,14 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { it[Keys.FILTER_MODE] = mode.name }
     }
 
+    suspend fun setZeroTolerancePanels(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.ZERO_TOLERANCE_PANELS] = enabled }
+    }
+
+    suspend fun setDropSpamCompletely(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.DROP_SPAM_COMPLETELY] = enabled }
+    }
+
     suspend fun setNeverBlockOtp(enabled: Boolean) {
         context.dataStore.edit { it[Keys.NEVER_BLOCK_OTP] = enabled }
     }
@@ -63,7 +81,14 @@ class PreferencesRepository(private val context: Context) {
         context.dataStore.edit { it[Keys.AUTO_COPY_OTP] = enabled }
     }
 
-    suspend fun setOtpQuickBanner(enabled: Boolean) {
-        context.dataStore.edit { it[Keys.OTP_QUICK_BANNER] = enabled }
+    suspend fun setPersianUi(persian: Boolean) {
+        context.dataStore.edit { it[Keys.PERSIAN_UI] = persian }
+    }
+
+    suspend fun incrementVaporizedCount() {
+        context.dataStore.edit { prefs ->
+            val curr = prefs[Keys.VAPORIZED_COUNT] ?: 0
+            prefs[Keys.VAPORIZED_COUNT] = curr + 1
+        }
     }
 }

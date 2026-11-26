@@ -63,7 +63,11 @@ export default function App() {
   const [shieldEnabled, setShieldEnabled] = useState(true);
   const [filterMode, setFilterMode] = useState<FilterMode>('ALLOW_OTP_AND_BANK');
   const [neverBlockOtp, setNeverBlockOtp] = useState(true);
-  const [autoCopyOtp, setAutoCopyOtp] = useState(false);
+  const [autoCopyOtp, setAutoCopyOtp] = useState(true);
+  const [zeroTolerancePanels, setZeroTolerancePanels] = useState(true);
+  const [dropSpamCompletely, setDropSpamCompletely] = useState(false);
+  const [vaporizedCount, setVaporizedCount] = useState(0);
+  const [radioTelemetry, setRadioTelemetry] = useState<string | null>(null);
 
   const [phoneTab, setPhoneTab] = useState<PhoneTab>('inbox');
   const [searchQuery, setSearchQuery] = useState('');
@@ -92,6 +96,7 @@ export default function App() {
         filterMode,
         customRules,
         neverBlockOtpEvenFromBlocked: neverBlockOtp,
+        zeroToleranceCommercialPanels: zeroTolerancePanels,
       });
 
       let isBlocked = shieldEnabled && baseResult.shouldBlock;
@@ -119,7 +124,7 @@ export default function App() {
         isBlocked,
       };
     });
-  }, [messages, filterMode, customRules, neverBlockOtp, shieldEnabled]);
+  }, [messages, filterMode, customRules, neverBlockOtp, zeroTolerancePanels, shieldEnabled]);
 
   const allowedList = useMemo(
     () => classifiedMessages.filter((m) => !m.isBlocked),
@@ -148,8 +153,9 @@ export default function App() {
       filterMode,
       customRules,
       neverBlockOtpEvenFromBlocked: neverBlockOtp,
+      zeroToleranceCommercialPanels: zeroTolerancePanels,
     });
-  }, [testSender, testBody, filterMode, customRules, neverBlockOtp]);
+  }, [testSender, testBody, filterMode, customRules, neverBlockOtp, zeroTolerancePanels]);
 
   const showTimedBanner = (next: ToastBanner) => {
     setBanner(next);
@@ -179,46 +185,61 @@ export default function App() {
       filterMode,
       customRules,
       neverBlockOtpEvenFromBlocked: neverBlockOtp,
+      zeroToleranceCommercialPanels: zeroTolerancePanels,
     });
 
     const willBlock = shieldEnabled && evalRes.shouldBlock;
+
+    if (willBlock) {
+      // ZERO NOTIFICATION ON PHONE! Do NOT show any banner inside the phone screen!
+      setBanner(null);
+      if (dropSpamCompletely) {
+        setVaporizedCount((c) => c + 1);
+        setRadioTelemetry(
+          `⚡ در ۱.۲ میلی‌ثانیه در لایه رادیویی نابود شد (${sender}) — بدون هیچ نوتیفیکیشن، صدا یا ذخیره!`
+        );
+      } else {
+        const newMsg: StoredSms = {
+          id: `sim-${Date.now()}`,
+          sender,
+          body,
+          minutesAgo: 0,
+        };
+        setMessages((prev) => [newMsg, ...prev]);
+        setRadioTelemetry(
+          `⚡ در ۱.۴ میلی‌ثانیه در لایه SMS_DELIVER بلاک شد (${sender}) — حتی ۱ نوتیفیکیشن روی گوشی ظاهر نشد!`
+        );
+      }
+      return;
+    }
+
     const newMsg: StoredSms = {
       id: `sim-${Date.now()}`,
       sender,
       body,
       minutesAgo: 0,
     };
-
     setMessages((prev) => [newMsg, ...prev]);
+    setRadioTelemetry(null);
 
-    if (willBlock) {
-      showTimedBanner({
-        id: Date.now(),
-        type: 'BLOCKED',
-        title:
-          evalRes.category === 'PHISHING'
-            ? `Blocked Phishing Scam (${sender})`
-            : `Silently Blocked Ad (${sender})`,
-        subtitle: 'Zero phone chime • Quarantined in Blocked tab',
-      });
-    } else if (evalRes.category === 'OTP' && evalRes.otpCode) {
+    if (evalRes.category === 'OTP' && evalRes.otpCode) {
       if (autoCopyOtp) {
         navigator.clipboard?.writeText(evalRes.otpCode).catch(() => {});
       }
       showTimedBanner({
         id: Date.now(),
         type: 'OTP',
-        title: `OTP ${evalRes.otpCode} • ${sender}`,
+        title: `کد تایید: ${evalRes.otpCode} • ${sender}`,
         subtitle: autoCopyOtp
-          ? 'Auto-copied to clipboard! Verification allowed through.'
-          : 'Allowed immediately • Tap to copy verification code',
+          ? 'به صورت خودکار کپی شد • نوتیفیکیشن فوری'
+          : 'پیام کد تایید مجاز • ضربه برای کپی',
         otpCode: evalRes.otpCode,
       });
     } else {
       showTimedBanner({
         id: Date.now(),
         type: 'ALLOWED',
-        title: `New SMS • ${sender}`,
+        title: `پیامک مجاز • ${sender}`,
         subtitle: body.slice(0, 64),
       });
     }
@@ -335,6 +356,14 @@ export default function App() {
       <main className="mx-auto grid max-w-7xl grid-cols-1 gap-8 px-4 py-6 sm:px-6 lg:grid-cols-12 lg:items-start">
         {/* LEFT COLUMN: Realistic Android Phone Preview */}
         <div className="flex flex-col items-center lg:col-span-5">
+          {radioTelemetry && (
+            <div
+              dir="rtl"
+              className="mb-3 w-full max-w-[390px] rounded-2xl border border-emerald-500/40 bg-emerald-950/70 px-4 py-2.5 text-xs font-semibold text-emerald-200 shadow-lg"
+            >
+              {radioTelemetry}
+            </div>
+          )}
           <div className="relative w-full max-w-[390px] overflow-hidden rounded-[2.6rem] border-[7px] border-slate-800 bg-slate-950 shadow-2xl shadow-black/70 ring-1 ring-slate-700/60">
             {/* Android Status Bar + Camera Punch-hole */}
             <div className="flex items-center justify-between bg-slate-950 px-6 pb-2 pt-3 text-[11px] font-medium text-slate-400">
@@ -725,7 +754,41 @@ export default function App() {
                   </div>
 
                   <div className="space-y-2.5 rounded-2xl border border-slate-800 bg-slate-900/80 p-3.5">
-                    <div className="text-xs font-bold text-white">OTP Safety Guardrails</div>
+                    <div className="text-xs font-bold text-white">
+                      Zero-Notification Radio Controls
+                    </div>
+                    <label className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-medium text-slate-200">
+                          Zero-Tolerance Bulk Panels (5000/2000/021)
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Silences ALL panel texts unless OTP, Bank, or Service
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={zeroTolerancePanels}
+                        onChange={(e) => setZeroTolerancePanels(e.target.checked)}
+                        className="h-4 w-4 accent-emerald-500"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-xs font-medium text-slate-200">
+                          Vaporize Spam (Don&apos;t Even Save in Vault)
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Dropped in RAM ({vaporizedCount} vaporized)
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={dropSpamCompletely}
+                        onChange={(e) => setDropSpamCompletely(e.target.checked)}
+                        className="h-4 w-4 accent-emerald-500"
+                      />
+                    </label>
                     <label className="flex items-center justify-between gap-3">
                       <div>
                         <div className="text-xs font-medium text-slate-200">
@@ -782,7 +845,6 @@ export default function App() {
                 onClick={() => setPhoneTab('blocked')}
                 icon={<Ban className="h-4 w-4" />}
                 label="Blocked"
-                badge={blockedList.length}
               />
               <PhoneNavBtn
                 active={phoneTab === 'rules'}
@@ -1025,9 +1087,10 @@ export default function App() {
                 />
                 <StepBox
                   num="2"
-                  title="Pick Your Preferred Android Blocking Mode Inside the App"
-                  body="• Option A — Notification Shield (Keep Google/Samsung Messages!): Grants Notification Access so ParsShield instantly dismisses spam SMS notifications while leaving OTPs, bank alerts, and chats untouched. (On Android 13+, if 'Restricted setting' appears after APK install, open App Info -> ⋮ -> 'Allow restricted settings'.)
-• Option B — Full Default SMS Blocker: Sets ParsShield as your Default SMS handler for 100% OS-level silent quarantine (zero ring, zero vibration on spam) + 1-tap 'Copy OTP' button in notifications."
+                  title="Tap 'Set as Default SMS App' on First Launch (Zero-Notification Radio Shield)"
+                  body="When ParsShield is your Default SMS App (RoleManager.ROLE_SMS), Android routes incoming SMS exclusively to ParsShield's SmsDeliverReceiver BEFORE any UI or notification object exists:
+• Advertisements & Phishing -> Blocked in <2ms in RAM. NotificationManager is NEVER called (zero notification, zero sound, zero vibration, zero lock-screen wake). You can even enable 'Vaporize Spam' so blocked ads aren't saved anywhere!
+• OTPs, رمز پویا, Bank & Personal Chats -> Instant notification with 1-Tap Copy OTP, full Conversation Threads, and inline Direct Reply."
                 />
                 <StepBox
                   num="3"

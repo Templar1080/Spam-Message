@@ -14,7 +14,7 @@ object SenderAnalyzer {
         "BPI", "PARSIAN", "TEJARAT", "SADERAT", "BSI", "SEPAH", "KESHAVARZI",
         "MASKAN", "REFAH", "AYANDEH", "RESALAT", "GARDESHGARI", "KARAFARIN",
         "EGHTESAD", "SINA", "SHAHR", "DEY", "POSTBANK", "WEPOD", "ASANPARDKHT",
-        "ADLIRAN", "NAJA", "POLICE", "POST", "DOLAT", "MYGOV", "SANJESH", "TAMIN",
+        "ADLIRAN", "NAJA", "POLICE", "POST", "TIPAX", "DOLAT", "MYGOV", "SANJESH", "TAMIN",
         "GOOGLE", "TELEGRAM", "APPLE", "MICROSOFT", "WHATSAPP", "INSTAGRAM",
         "FACEBOOK", "SIGNAL", "AUTHMSG", "VERIFY", "GITHUB"
     )
@@ -31,6 +31,32 @@ object SenderAnalyzer {
         """^(?:21|26|31|51|71|41|11|13|61|35|25|81|86|44|45|23|24|28|34|38|54|56|58|66|74|76|77|83|84|87|17)\d{6,8}$"""
     )
     private val HAS_ASCII_LETTERS_REGEX = Regex("""[A-Za-z]""")
+
+    private val CANON_0098_MOBILE = Regex("""^00989\d{9}$""")
+    private val CANON_98_MOBILE = Regex("""^989\d{9}$""")
+    private val CANON_09_MOBILE = Regex("""^09\d{9}$""")
+    private val CANON_9_MOBILE = Regex("""^9\d{9}$""")
+
+    /**
+     * Merges "+989121234567", "09121234567", and "00989121234567" into a single canonical
+     * conversation thread key ("+989121234567").
+     */
+    fun canonicalizeThreadAddress(rawSender: String): String {
+        val cleaned = TextNormalizer.normalizeDigits(rawSender)
+            .replace(STRIP_FORMATTING_REGEX, "")
+            .trim()
+        if (HAS_ASCII_LETTERS_REGEX.containsMatchIn(cleaned)) {
+            return cleaned.uppercase()
+        }
+        val noPlus = cleaned.removePrefix("+")
+        return when {
+            CANON_0098_MOBILE.matches(noPlus) -> "+98${noPlus.substring(4)}"
+            CANON_98_MOBILE.matches(noPlus) -> "+$noPlus"
+            CANON_09_MOBILE.matches(noPlus) -> "+98${noPlus.substring(1)}"
+            CANON_9_MOBILE.matches(noPlus) -> "+98$noPlus"
+            else -> cleaned
+        }
+    }
 
     fun analyze(rawSender: String, isSavedContact: Boolean = false): SenderAnalysis {
         val cleaned = TextNormalizer.normalizeDigits(rawSender)

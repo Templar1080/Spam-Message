@@ -1,10 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { classifyIranSms, normalizeSmsText } from './iranSmsClassifier';
+import {
+  canonicalizeThreadAddress,
+  classifyIranSms,
+  normalizeSmsText,
+} from './iranSmsClassifier';
 
-describe('IranSmsClassifier — Normalization', () => {
+describe('IranSmsClassifier — Normalization & Thread Canonicalization', () => {
   it('normalizes Persian/Arabic numerals, Arabic Yeh/Kaf, ZWNJ, and Kashida obfuscation', () => {
     const raw = 'تـخـفـيـف ويـژه ۵۰٪ كـاشـت مـو\u200Cها ۰۹۱۲۳۴۵۶۷۸۹';
     expect(normalizeSmsText(raw)).toBe('تخفیف ویژه 50٪ کاشت مو ها 09123456789');
+  });
+
+  it('merges +98912, 0912, and 0098912 into the exact same thread address', () => {
+    expect(canonicalizeThreadAddress('09121234567')).toBe('+989121234567');
+    expect(canonicalizeThreadAddress('+98 912 123 4567')).toBe('+989121234567');
+    expect(canonicalizeThreadAddress('00989121234567')).toBe('+989121234567');
   });
 });
 
@@ -147,6 +157,16 @@ describe('IranSmsClassifier — ZERO False Positives on OTPs (Persian, Finglish,
     expect(res.category).toBe('OTP');
     expect(res.shouldBlock).toBe(false);
     expect(res.otpCode).toBe('739104');
+  });
+
+  it('protects ultra-minimal brand OTP without the word کد ("اسنپ: ۴۸۲۹۱۰")', () => {
+    const res = classifyIranSms({
+      sender: '9810005544',
+      body: 'اسنپ: ۴۸۲۹۱۰\nلغو11',
+    });
+    expect(res.category).toBe('OTP');
+    expect(res.shouldBlock).toBe(false);
+    expect(res.otpCode).toBe('482910');
   });
 
   it('protects Digikala courier handoff code (کد تحویل سفارش) as OTP so it can be copied in 1 tap', () => {
@@ -371,6 +391,15 @@ describe('IranSmsClassifier — Blocks Real Iranian Spam, Ads & Phishing', () =>
     const res = classifyIranSms({
       sender: '500049911',
       body: 'وبینار رایگان نوسان‌گیری طلا و دلار با استاد کریمی! ظرفیت محدود، ثبت نام در: yun.ir/goldweb',
+    });
+    expect(res.category).toBe('SPAM_AD');
+    expect(res.shouldBlock).toBe(true);
+  });
+
+  it('blocks sneaky commercial ad from 5000/021 panel even when it avoids discount/لغو11 words', () => {
+    const res = classifyIranSms({
+      sender: '98500012345',
+      body: 'گروه صنعتی پارس استیل، تولید کننده انواع ورق و پروفیل صنعتی در تهران. تلفن: ۸۸۷۷۶۶۵۵',
     });
     expect(res.category).toBe('SPAM_AD');
     expect(res.shouldBlock).toBe(true);

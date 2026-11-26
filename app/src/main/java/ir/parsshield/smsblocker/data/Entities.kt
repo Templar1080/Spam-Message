@@ -13,18 +13,21 @@ import ir.parsshield.smsblocker.engine.SmsCategory
     tableName = "messages",
     indices = [
         Index(value = ["timestamp"]),
+        Index(value = ["threadAddress"]),
         Index(value = ["isBlocked"]),
         Index(value = ["systemSmsId"], unique = true)
     ]
 )
 data class SmsEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0L,
+    val threadAddress: String,
     val sender: String,
     val displayName: String? = null,
     val body: String,
     val timestamp: Long,
     val category: SmsCategory,
     val isBlocked: Boolean,
+    val isOutgoing: Boolean = false,
     val otpCode: String? = null,
     val spamScore: Int = 0,
     val reasonSummary: String = "",

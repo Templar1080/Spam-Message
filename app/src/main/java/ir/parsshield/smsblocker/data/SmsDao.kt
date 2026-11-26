@@ -14,8 +14,11 @@ interface SmsDao {
     @Query("SELECT * FROM messages ORDER BY timestamp DESC")
     fun observeAllMessages(): Flow<List<SmsEntity>>
 
-    @Query("SELECT * FROM messages WHERE sender = :sender AND body = :body AND timestamp >= :minTimestamp LIMIT 1")
-    suspend fun findRecentDuplicate(sender: String, body: String, minTimestamp: Long): SmsEntity?
+    @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
+    suspend fun findById(id: Long): SmsEntity?
+
+    @Query("SELECT * FROM messages WHERE threadAddress = :threadAddress AND body = :body AND timestamp >= :minTimestamp LIMIT 1")
+    suspend fun findRecentDuplicate(threadAddress: String, body: String, minTimestamp: Long): SmsEntity?
 
     @Query("SELECT EXISTS(SELECT 1 FROM messages WHERE systemSmsId = :systemId)")
     suspend fun existsBySystemId(systemId: Long): Boolean
@@ -25,6 +28,12 @@ interface SmsDao {
 
     @Update
     suspend fun updateMessage(entity: SmsEntity)
+
+    @Query("UPDATE messages SET isRead = 1 WHERE threadAddress = :threadAddress AND isRead = 0")
+    suspend fun markThreadRead(threadAddress: String)
+
+    @Query("UPDATE messages SET isBlocked = 1, category = 'SPAM_AD', isRead = 1 WHERE threadAddress = :threadAddress AND category != 'OTP'")
+    suspend fun markThreadBlockedExceptOtp(threadAddress: String)
 
     @Delete
     suspend fun deleteMessage(entity: SmsEntity)

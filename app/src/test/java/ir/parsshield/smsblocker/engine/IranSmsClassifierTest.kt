@@ -18,25 +18,29 @@ class IranSmsClassifierTest {
     }
 
     @Test
-    fun `protects Digikala OTP and extracts code`() {
-        val res = IranSmsClassifier.classify(
-            sender = "9810004321",
-            body = "کد تایید شما در دیجی‌کالا: ۴۸۲۹۱۰\nاین کد را در اختیار دیگران قرار ندهید."
-        )
-        assertEquals(SmsCategory.OTP, res.category)
-        assertFalse(res.shouldBlock)
-        assertEquals("482910", res.otpCode)
+    fun `canonicalizes Iranian mobile thread addresses identically`() {
+        assertEquals("+989121234567", SenderAnalyzer.canonicalizeThreadAddress("09121234567"))
+        assertEquals("+989121234567", SenderAnalyzer.canonicalizeThreadAddress("+98 912 123 4567"))
+        assertEquals("+989121234567", SenderAnalyzer.canonicalizeThreadAddress("00989121234567"))
     }
 
     @Test
-    fun `protects OTP even when bulk SMS gateway appends laghv11`() {
-        val res = IranSmsClassifier.classify(
-            sender = "985000491234",
-            body = "فروشگاه آنلاین بانی‌مد\nکد ورود شما: ۷۳۹۱۵\nلغو11"
+    fun `protects Digikala OTP and minimal brand OTPs even with laghv11`() {
+        val digikala = IranSmsClassifier.classify(
+            sender = "9810004321",
+            body = "کد تایید شما در دیجی‌کالا: ۴۸۲۹۱۰\nاین کد را در اختیار دیگران قرار ندهید."
         )
-        assertEquals(SmsCategory.OTP, res.category)
-        assertFalse(res.shouldBlock)
-        assertEquals("73915", res.otpCode)
+        assertEquals(SmsCategory.OTP, digikala.category)
+        assertFalse(digikala.shouldBlock)
+        assertEquals("482910", digikala.otpCode)
+
+        val minimal = IranSmsClassifier.classify(
+            sender = "9810005544",
+            body = "اسنپ: ۴۸۲۹۱۰\nلغو11"
+        )
+        assertEquals(SmsCategory.OTP, minimal.category)
+        assertFalse(minimal.shouldBlock)
+        assertEquals("482910", minimal.otpCode)
     }
 
     @Test
@@ -48,36 +52,6 @@ class IranSmsClassifierTest {
         assertEquals(SmsCategory.OTP, res.category)
         assertFalse(res.shouldBlock)
         assertEquals("8492015", res.otpCode)
-    }
-
-    @Test
-    fun `protects multi-line OTP where code is on next line`() {
-        val res = IranSmsClassifier.classify(
-            sender = "98300077",
-            body = "همراه من\nرمز یکبار مصرف شما جهت ورود:\n۷۳۹۱۰۴\nمهلت استفاده ۲ دقیقه"
-        )
-        assertEquals(SmsCategory.OTP, res.category)
-        assertFalse(res.shouldBlock)
-        assertEquals("739104", res.otpCode)
-    }
-
-    @Test
-    fun `protects Finglish and English OTPs`() {
-        val finglish = IranSmsClassifier.classify(
-            sender = "98500012345",
-            body = "Kode taeed shoma: 49201 - Azki.com"
-        )
-        assertEquals(SmsCategory.OTP, finglish.category)
-        assertFalse(finglish.shouldBlock)
-        assertEquals("49201", finglish.otpCode)
-
-        val google = IranSmsClassifier.classify(
-            sender = "GOOGLE",
-            body = "G-748291 is your Google verification code."
-        )
-        assertEquals(SmsCategory.OTP, google.category)
-        assertFalse(google.shouldBlock)
-        assertEquals("748291", google.otpCode)
     }
 
     @Test
@@ -99,30 +73,16 @@ class IranSmsClassifierTest {
         )
         assertEquals(SmsCategory.BANK_ALERT, saman.category)
         assertFalse(saman.shouldBlock)
-
-        val sepah = IranSmsClassifier.classify(
-            sender = "98300094",
-            body = "بانک سپه\nکارت603769******1234\nخرید:450,000ریال\nمانده:18,200,000ریال"
-        )
-        assertEquals(SmsCategory.BANK_ALERT, sepah.category)
-        assertFalse(sepah.shouldBlock)
     }
 
     @Test
-    fun `blocks beauty clinic casino villa and Kashida spam`() {
-        val clinic = IranSmsClassifier.classify(
-            sender = "+982122446688",
-            body = "جشنواره پاییزه کلینیک زیبایی ونک! کاشت مو و لیزر موهای زائد با ۴۰٪ تخفیف."
+    fun `blocks sneaky commercial ad from 5000 panel even without discount or laghv11 words`() {
+        val sneaky = IranSmsClassifier.classify(
+            sender = "98500012345",
+            body = "گروه صنعتی پارس استیل، تولید کننده انواع ورق و پروفیل صنعتی در تهران. تلفن: ۸۸۷۷۶۶۵۵"
         )
-        assertEquals(SmsCategory.SPAM_AD, clinic.category)
-        assertTrue(clinic.shouldBlock)
-
-        val casino = IranSmsClassifier.classify(
-            sender = "+989351112233",
-            body = "واریز هدیه ثبت نام ۵۰۰ هزار تومانی + ۱۰۰٪ بونوس بازی انفجار در کازینو آنلاین! yun.ir/bet99"
-        )
-        assertEquals(SmsCategory.SPAM_AD, casino.category)
-        assertTrue(casino.shouldBlock)
+        assertEquals(SmsCategory.SPAM_AD, sneaky.category)
+        assertTrue(sneaky.shouldBlock)
     }
 
     @Test

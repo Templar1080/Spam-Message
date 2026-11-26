@@ -2,8 +2,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <!--
-      PRIVACY GUARANTEE: Notice android.permission.INTERNET is intentionally NOT requested.
-      Android enforces at the OS level that your OTPs, bank SMS, and contacts can never leave your phone.
+      PRIVACY GUARANTEE: android.permission.INTERNET is intentionally NOT requested.
+      Android enforces at the OS kernel level that your OTPs, bank SMS, and contacts can never leave your phone.
     -->
     <uses-permission android:name="android.permission.RECEIVE_SMS" />
     <uses-permission android:name="android.permission.READ_SMS" />
@@ -49,17 +49,21 @@
             </intent-filter>
         </activity>
 
-        <!-- Mode B (Default SMS Role): Direct OS-level SMS interception with silent spam blocking -->
+        <!--
+          PRE-NOTIFICATION RADIO-LEVEL SMS INTERCEPTOR (SMS_DELIVER):
+          When ParsShield is set as Default SMS App, Android delivers incoming SMS exclusively here
+          BEFORE any notification, sound, vibration, or screen wake can ever be created.
+        -->
         <receiver
             android:name=".service.SmsDeliverReceiver"
             android:exported="true"
             android:permission="android.permission.BROADCAST_SMS">
-            <intent-filter>
+            <intent-filter android:priority="999">
                 <action android:name="android.provider.Telephony.SMS_DELIVER" />
             </intent-filter>
         </receiver>
 
-        <!-- Required by Android Default SMS Role -->
+        <!-- Required by Android RoleManager.ROLE_SMS -->
         <receiver
             android:name=".service.MmsReceiver"
             android:exported="true"
@@ -70,7 +74,7 @@
             </intent-filter>
         </receiver>
 
-        <!-- Required by Android Default SMS Role -->
+        <!-- Required by Android RoleManager.ROLE_SMS -->
         <service
             android:name=".service.HeadlessSmsSendService"
             android:exported="true"
@@ -85,20 +89,14 @@
             </intent-filter>
         </service>
 
-        <!-- Mode A (Companion Notification Shield): Dismisses spam SMS notifications while keeping Google/Samsung Messages -->
-        <service
-            android:name=".service.SmsNotificationShieldService"
-            android:exported="true"
-            android:label="@string/notification_shield_label"
-            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
-            <intent-filter>
-                <action android:name="android.service.notification.NotificationListenerService" />
-            </intent-filter>
-        </service>
-
         <!-- 1-Tap OTP Copy action from notification shade -->
         <receiver
             android:name=".service.CopyOtpReceiver"
+            android:exported="false" />
+
+        <!-- Inline Direct Reply & 1-Tap Block Sender actions from notification shade -->
+        <receiver
+            android:name=".service.NotificationActionReceiver"
             android:exported="false" />
 
     </application>

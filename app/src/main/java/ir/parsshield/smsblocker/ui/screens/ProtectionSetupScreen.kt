@@ -21,7 +21,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -39,18 +38,18 @@ import ir.parsshield.smsblocker.engine.FilterMode
 fun ProtectionSetupScreen(
     settings: ShieldSettings,
     isDefaultSmsApp: Boolean,
-    isNotificationShieldActive: Boolean,
     hasSmsPermissions: Boolean,
     onRequestPermissions: () -> Unit,
-    onOpenNotificationAccess: () -> Unit,
     onRequestDefaultSmsRole: () -> Unit,
-    onOpenAppInfoSettings: () -> Unit,
     onToggleShield: (Boolean) -> Unit,
     onChangeFilterMode: (FilterMode) -> Unit,
+    onToggleZeroTolerancePanels: (Boolean) -> Unit,
+    onToggleDropSpamCompletely: (Boolean) -> Unit,
     onToggleNeverBlockOtp: (Boolean) -> Unit,
-    onToggleAutoCopyOtp: (Boolean) -> Unit,
-    onToggleOtpBanner: (Boolean) -> Unit
+    onToggleAutoCopyOtp: (Boolean) -> Unit
 ) {
+    val fa = settings.persianUi
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -59,16 +58,20 @@ fun ProtectionSetupScreen(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Text(
-            text = "Protection & Setup",
+            text = if (fa) "تنظیمات سپر بلاک آنی" else "Zero-Notification Shield Settings",
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold
         )
 
-        // Master Shield Switch + Zero-Internet Privacy Guarantee
+        // Radio-Level Pre-Notification Status Card
         Card(
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f)
+                containerColor = if (isDefaultSmsApp) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
+                } else {
+                    Color(0xFF7F1D1D).copy(alpha = 0.45f)
+                }
             )
         ) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -79,19 +82,29 @@ fun ProtectionSetupScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
                         Icon(
-                            imageVector = Icons.Default.Shield,
+                            imageVector = if (isDefaultSmsApp) Icons.Default.CheckCircle else Icons.Default.Shield,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = if (isDefaultSmsApp) Color(0xFF10B981) else Color(0xFFF87171)
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Spam & Ad Shield Active",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
+                                text = if (isDefaultSmsApp) {
+                                    if (fa) "بلاک آنی سطح رادیویی فعال است"
+                                    else "Pre-Notification Radio Blocker Active"
+                                } else {
+                                    if (fa) "نیاز به انتخاب به عنوان برنامه پیش‌فرض پیامک"
+                                    else "Set as Default SMS Required for Zero Notification"
+                                },
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.ExtraBold
                             )
                             Text(
-                                text = "100% offline • Zero internet permission requested",
+                                text = if (fa) {
+                                    "پیام‌های تبلیغاتی در کمتر از ۲ میلی‌ثانیه مسدود می‌شوند؛ بدون نوتیفیکیشن، بدون صدا و بدون روشن شدن صفحه."
+                                } else {
+                                    "Spam is intercepted at SMS_DELIVER in <2ms—zero notification, zero chime, zero screen wake."
+                                },
                                 style = MaterialTheme.typography.bodySmall
                             )
                         }
@@ -101,100 +114,65 @@ fun ProtectionSetupScreen(
                         onCheckedChange = onToggleShield
                     )
                 }
-            }
-        }
 
-        // Two Android Blocking Modes
-        Card(shape = RoundedCornerShape(16.dp)) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Choose How Android Blocks Spam",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Option A lets you keep Google/Samsung Messages. Option B makes ParsShield your Default SMS app for complete silent blocking.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                // Option A: Companion Notification Shield
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Option A: Notification Shield", fontWeight = FontWeight.SemiBold)
+                if (!isDefaultSmsApp) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Button(
+                        onClick = onRequestDefaultSmsRole,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
                         Text(
-                            text = if (isNotificationShieldActive) "Active — dismissing spam notifications automatically"
-                            else "Keep your current SMS app & auto-dismiss spam alerts",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isNotificationShieldActive) Color(0xFF10B981)
-                            else MaterialTheme.colorScheme.onSurfaceVariant
+                            if (fa) "انتخاب پارس‌شیلد به عنوان پیامک پیش‌فرض"
+                            else "Set ParsShield as Default SMS App"
                         )
                     }
-                    if (isNotificationShieldActive) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981))
-                    } else {
-                        Button(onClick = onOpenNotificationAccess) {
-                            Text("Enable")
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "Android 13+ APK tip: If Notification Access says 'Restricted setting', tap 'Open App Info' -> ⋮ (top right) -> 'Allow restricted settings'.",
-                    fontSize = 11.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                OutlinedButton(
-                    onClick = onOpenAppInfoSettings,
-                    modifier = Modifier.padding(top = 4.dp)
-                ) {
-                    Text("Open App Info", fontSize = 12.sp)
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
-
-                // Option B: Full Default SMS App Role
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text("Option B: Full Default SMS Blocker", fontWeight = FontWeight.SemiBold)
-                        Text(
-                            text = if (isDefaultSmsApp) "Active — OS-level silent spam quarantine"
-                            else "Zero chime, zero lock-screen wake on spam",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isDefaultSmsApp) Color(0xFF10B981)
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    if (isDefaultSmsApp) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF10B981))
-                    } else {
-                        OutlinedButton(onClick = onRequestDefaultSmsRole) {
-                            Text("Set Default")
-                        }
-                    }
-                }
-
-                if (!hasSmsPermissions) {
+                } else if (!hasSmsPermissions) {
                     Spacer(modifier = Modifier.height(10.dp))
                     Button(
                         onClick = onRequestPermissions,
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text("Grant SMS & Contacts Read Permission")
+                        Text(
+                            if (fa) "اعطای دسترسی مخاطبین برای تشخیص شماره‌های آشنا"
+                            else "Grant Contacts Permission"
+                        )
                     }
                 }
+            }
+        }
+
+        // Instant Silent Quarantine / Vaporize Toggles
+        Card(shape = RoundedCornerShape(16.dp)) {
+            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = if (fa) "حذف مطلق پیامک‌های تبلیغاتی" else "Zero-Tolerance Ad Blocking",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                SettingSwitchRow(
+                    title = if (fa) "مسدودسازی کامل خطوط تبلیغاتی (۵۰۰۰، ۲۰۰۰، ۳۰۰۰، ۰۲۱)"
+                    else "Zero-Tolerance Commercial Panel Filter",
+                    subtitle = if (fa) {
+                        "هر پیامکی از پنل‌های انبوه و ثابت که کد تایید، تراکنش بانکی یا پیام خدماتی ضروری نباشد، در جا و بدون نوتیف بلاک می‌شود."
+                    } else {
+                        "Blocks ALL messages from 1000/2000/3000/5000/9000 & 021 panels unless they are OTPs, bank alerts, or verified services."
+                    },
+                    checked = settings.zeroToleranceCommercialPanels,
+                    onCheckedChange = onToggleZeroTolerancePanels
+                )
+
+                SettingSwitchRow(
+                    title = if (fa) "حذف آنی در حافظه (حتی در تب مسدودشده‌ها هم ذخیره نشود)"
+                    else "Vaporize Spam Completely (Don't Even Save in Vault)",
+                    subtitle = if (fa) {
+                        "تبلیغات در لحظه دریافت کاملا نابود می‌شوند (${settings.vaporizedCount} تبلیغ تاکنون نابود شده)."
+                    } else {
+                        "Drops blocked ads in RAM immediately without saving (${settings.vaporizedCount} vaporized so far)."
+                    },
+                    checked = settings.dropSpamCompletely,
+                    onCheckedChange = onToggleDropSpamCompletely
+                )
             }
         }
 
@@ -202,7 +180,7 @@ fun ProtectionSetupScreen(
         Card(shape = RoundedCornerShape(16.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Text(
-                    text = "Filtering Mode",
+                    text = if (fa) "حالت فیلترینگ" else "Filtering Mode",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -210,21 +188,19 @@ fun ProtectionSetupScreen(
 
                 FilterModeOptionRow(
                     selected = settings.filterMode == FilterMode.ALLOW_OTP_AND_BANK,
-                    title = "Allow OTPs + Bank & Service Alerts (Recommended)",
-                    desc = "Blocks ads, clinics, villas, betting & phishing; allows OTPs, Shaparak/bank alerts, postal & service SMS.",
+                    title = if (fa) "دریافت کدهای تایید (OTP) + بانک و پیام‌های خدماتی (پیشنهادی)"
+                    else "Allow OTPs + Bank & Service Alerts (Recommended)",
+                    desc = if (fa) "بلاک بی‌صدای تمام تبلیغات و فیشینگ؛ نمایش فوری کد تایید، رمز پویا، شاپرک و مرسولات پستی."
+                    else "Silently blocks all ads & phishing; allows OTPs, رمز پویا, Shaparak & delivery updates.",
                     onClick = { onChangeFilterMode(FilterMode.ALLOW_OTP_AND_BANK) }
                 )
                 FilterModeOptionRow(
                     selected = settings.filterMode == FilterMode.STRICT_OTP_ONLY,
-                    title = "Strict: OTPs & Personal Numbers Only",
-                    desc = "Silences all shortcode/panel messages except login OTPs and Shaparak رمز پویا.",
+                    title = if (fa) "حالت سخت‌گیرانه: فقط کدهای تایید و شماره‌های شخصی"
+                    else "Strict: OTPs & Personal Numbers Only",
+                    desc = if (fa) "حتی پیام‌های خدماتی و بانکی غیر از رمز پویا و کد تایید هم بی‌صدا می‌شوند."
+                    else "Silences everything from shortcodes except login OTPs and رمز پویا.",
                     onClick = { onChangeFilterMode(FilterMode.STRICT_OTP_ONLY) }
-                )
-                FilterModeOptionRow(
-                    selected = settings.filterMode == FilterMode.MONITOR_ONLY,
-                    title = "Monitor & Categorize Only",
-                    desc = "Tags spam without blocking notifications.",
-                    onClick = { onChangeFilterMode(FilterMode.MONITOR_ONLY) }
                 )
             }
         }
@@ -236,46 +212,28 @@ fun ProtectionSetupScreen(
                     Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "OTP Protection & Convenience",
+                        text = if (fa) "محافظت ۱۰۰٪ از کدهای تایید و رمز پویا"
+                        else "OTP & Dynamic PIN Safety",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
                 }
 
                 SettingSwitchRow(
-                    title = "Never block OTPs even from blocked senders",
-                    subtitle = "Essential in Iran because Digikala/Snapp/banks share 1000-5000 gateways with ad panels.",
+                    title = if (fa) "هرگز کد تایید را بلاک نکن (حتی از سرشماره‌های مسدود)"
+                    else "Never block OTPs even from blocked senders",
+                    subtitle = if (fa) "ضروری در ایران چون دیجی‌کالا، اسنپ و بانک‌ها از سرشماره‌های مشترک ۵۰۰۰/۱۰۰۰ استفاده می‌کنند."
+                    else "Essential in Iran where Digikala/Snapp/banks share 1000–5000 gateways with ads.",
                     checked = settings.neverBlockOtpEvenFromBlocked,
                     onCheckedChange = onToggleNeverBlockOtp
                 )
                 SettingSwitchRow(
-                    title = "Auto-copy incoming OTP to clipboard",
-                    subtitle = "Automatically copies 4–8 digit verification codes and رمز پویا as soon as they arrive.",
+                    title = if (fa) "کپی خودکار کد تایید و رمز پویا در کلیپ‌بورد"
+                    else "Auto-copy incoming OTP to clipboard",
+                    subtitle = if (fa) "به محض دریافت پیامک، کد ۴ تا ۸ رقمی آماده Paste است."
+                    else "Copies 4–8 digit verification codes and رمز پویا automatically.",
                     checked = settings.autoCopyOtpToClipboard,
                     onCheckedChange = onToggleAutoCopyOtp
-                )
-                SettingSwitchRow(
-                    title = "1-Tap 'Copy OTP' notification button",
-                    subtitle = "Adds a quick Copy button in the notification shade.",
-                    checked = settings.otpQuickNotificationBanner,
-                    onCheckedChange = onToggleOtpBanner
-                )
-            }
-        }
-
-        // Iranian Carrier USSD Tip Card
-        Card(shape = RoundedCornerShape(16.dp)) {
-            Column(modifier = Modifier.padding(16.dp)) {
-                Text(
-                    text = "Bonus Tip for Iran Mobile Carriers",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "Dialing *800# on MCI (Hamrah-e Aval), Irancell, or Rightel lets you cancel paid VAS subscriptions, while ParsShield filters the remaining 5000/021/09xx promotional blasts without ever breaking your OTPs!",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
         }

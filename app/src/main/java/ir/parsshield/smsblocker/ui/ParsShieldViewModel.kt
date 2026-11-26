@@ -23,6 +23,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
+data class ConversationThread(
+    val threadAddress: String,
+    val rawSender: String,
+    val displayName: String?,
+    val latestMessage: SmsEntity,
+    val unreadCount: Int,
+    val messageCount: Int
+)
+
 class ParsShieldViewModel(application: Application) : AndroidViewModel(application) {
 
     private val app = application as ParsShieldApp
@@ -46,11 +55,17 @@ class ParsShieldViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch {
             _isScanning.value = true
             try {
-                val imported = smsRepository.scanExistingSystemInbox(limit = 250)
+                val imported = smsRepository.scanExistingSystemInbox(limit = 350)
+                val fa = settings.value.persianUi
                 Toast.makeText(
                     app,
-                    if (imported > 0) "Classified $imported SMS messages from inbox"
-                    else "Inbox is already up to date",
+                    if (imported > 0) {
+                        if (fa) "$imported پیامک بررسی و دسته‌بندی شد"
+                        else "Classified $imported SMS messages"
+                    } else {
+                        if (fa) "صندوق پیامک به‌روز است"
+                        else "Inbox is already up to date"
+                    },
                     Toast.LENGTH_SHORT
                 ).show()
             } finally {
@@ -59,24 +74,55 @@ class ParsShieldViewModel(application: Application) : AndroidViewModel(applicati
         }
     }
 
+    fun markThreadRead(threadAddress: String) {
+        viewModelScope.launch {
+            smsRepository.markThreadAsRead(threadAddress)
+        }
+    }
+
     fun copyOtp(code: String) {
         SmsRepository.copyOtpToClipboard(app, code)
-        Toast.makeText(app, "Copied OTP: $code", Toast.LENGTH_SHORT).show()
+        val fa = settings.value.persianUi
+        Toast.makeText(
+            app,
+            if (fa) "کد کپی شد: $code" else "Copied OTP: $code",
+            Toast.LENGTH_SHORT
+        ).show()
     }
 
     fun restoreNotSpam(entity: SmsEntity) {
         viewModelScope.launch {
             smsRepository.markNotSpamAndWhitelist(entity)
-            Toast.makeText(app, "Restored & whitelisted ${entity.sender}", Toast.LENGTH_SHORT).show()
+            val fa = settings.value.persianUi
+            Toast.makeText(
+                app,
+                if (fa) "پیام بازگردانی و فرستنده مجاز شد"
+                else "Restored & whitelisted ${entity.sender}",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
     fun blockSpamMessage(entity: SmsEntity) {
         viewModelScope.launch {
             smsRepository.markAsSpamAndBlockSender(entity)
+            val fa = settings.value.persianUi
             Toast.makeText(
                 app,
-                "Blocked ${entity.sender} (OTPs still protected)",
+                if (fa) "فرستنده بلاک شد (کدهای تایید همچنان امن هستند)"
+                else "Blocked ${entity.sender} (OTPs remain protected)",
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    fun blockThread(threadAddress: String, rawSender: String) {
+        viewModelScope.launch {
+            smsRepository.blockThreadSender(threadAddress, rawSender)
+            val fa = settings.value.persianUi
+            Toast.makeText(
+                app,
+                if (fa) "فرستنده بلاک شد" else "Sender blocked",
                 Toast.LENGTH_SHORT
             ).show()
         }
@@ -91,7 +137,12 @@ class ParsShieldViewModel(application: Application) : AndroidViewModel(applicati
     fun clearAllBlocked() {
         viewModelScope.launch {
             smsRepository.clearAllBlocked()
-            Toast.makeText(app, "Cleared blocked spam vault", Toast.LENGTH_SHORT).show()
+            val fa = settings.value.persianUi
+            Toast.makeText(
+                app,
+                if (fa) "صندوق هرزنامه‌ها پاک شد" else "Cleared blocked spam vault",
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -110,13 +161,19 @@ class ParsShieldViewModel(application: Application) : AndroidViewModel(applicati
     fun sendSms(destination: String, text: String, onComplete: (Boolean) -> Unit) {
         viewModelScope.launch {
             val res = smsRepository.sendSmsMessage(destination, text)
+            val fa = settings.value.persianUi
             if (res.isSuccess) {
-                Toast.makeText(app, "SMS sent", Toast.LENGTH_SHORT).show()
+                Toast.makeText(
+                    app,
+                    if (fa) "پیامک ارسال شد" else "SMS sent",
+                    Toast.LENGTH_SHORT
+                ).show()
                 onComplete(true)
             } else {
                 Toast.makeText(
                     app,
-                    "Failed to send SMS: ${res.exceptionOrNull()?.localizedMessage ?: "Permission required"}",
+                    if (fa) "خطا در ارسال پیامک"
+                    else "Failed: ${res.exceptionOrNull()?.localizedMessage ?: "Permission required"}",
                     Toast.LENGTH_LONG
                 ).show()
                 onComplete(false)
@@ -132,6 +189,14 @@ class ParsShieldViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch { prefs.setFilterMode(mode) }
     }
 
+    fun setZeroTolerancePanels(enabled: Boolean) {
+        viewModelScope.launch { prefs.setZeroTolerancePanels(enabled) }
+    }
+
+    fun setDropSpamCompletely(enabled: Boolean) {
+        viewModelScope.launch { prefs.setDropSpamCompletely(enabled) }
+    }
+
     fun setNeverBlockOtp(enabled: Boolean) {
         viewModelScope.launch { prefs.setNeverBlockOtp(enabled) }
     }
@@ -140,8 +205,10 @@ class ParsShieldViewModel(application: Application) : AndroidViewModel(applicati
         viewModelScope.launch { prefs.setAutoCopyOtp(enabled) }
     }
 
-    fun setOtpQuickBanner(enabled: Boolean) {
-        viewModelScope.launch { prefs.setOtpQuickBanner(enabled) }
+    fun toggleUiLanguage() {
+        viewModelScope.launch {
+            prefs.setPersianUi(!settings.value.persianUi)
+        }
     }
 
     fun testMessageLive(sender: String, body: String): ClassificationResult {
@@ -153,7 +220,8 @@ class ParsShieldViewModel(application: Application) : AndroidViewModel(applicati
             isSavedContact = false,
             filterMode = currentSettings.filterMode,
             customRules = domainRules,
-            neverBlockOtpEvenFromBlocked = currentSettings.neverBlockOtpEvenFromBlocked
+            neverBlockOtpEvenFromBlocked = currentSettings.neverBlockOtpEvenFromBlocked,
+            zeroToleranceCommercialPanels = currentSettings.zeroToleranceCommercialPanels
         )
     }
 

@@ -4,10 +4,8 @@ import android.Manifest
 import android.app.role.RoleManager
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
-import android.provider.Settings
 import android.provider.Telephony
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -19,7 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import ir.parsshield.smsblocker.data.SmsRepository
-import ir.parsshield.smsblocker.service.SmsNotificationShieldService
+import ir.parsshield.smsblocker.service.NotificationHelper
 import ir.parsshield.smsblocker.ui.MainScreen
 import ir.parsshield.smsblocker.ui.ParsShieldViewModel
 import ir.parsshield.smsblocker.ui.theme.ParsShieldTheme
@@ -31,7 +29,6 @@ class MainActivity : ComponentActivity() {
     }
 
     private var isDefaultSmsApp by mutableStateOf(false)
-    private var isNotificationShieldActive by mutableStateOf(false)
     private var hasSmsPermissions by mutableStateOf(false)
 
     private val permissionsLauncher = registerForActivityResult(
@@ -47,6 +44,10 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) {
         refreshSystemStates()
+        if (isDefaultSmsApp) {
+            requestSupplementalPermissionsIfNeeded()
+            viewModel.scanDeviceInbox()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -58,18 +59,18 @@ class MainActivity : ComponentActivity() {
             ?.substringBefore('?')
             ?.takeIf { it.isNotBlank() }
 
+        val initialOpenThread = intent?.getStringExtra(NotificationHelper.EXTRA_OPEN_THREAD_ADDRESS)
+
         setContent {
             ParsShieldTheme {
                 MainScreen(
                     viewModel = viewModel,
                     isDefaultSmsApp = isDefaultSmsApp,
-                    isNotificationShieldActive = isNotificationShieldActive,
                     hasSmsPermissions = hasSmsPermissions,
                     initialComposeRecipient = initialRecipient,
-                    onRequestPermissions = ::requestSmsAndNotificationPermissions,
-                    onOpenNotificationAccess = ::openNotificationListenerSettings,
-                    onRequestDefaultSmsRole = ::requestDefaultSmsRole,
-                    onOpenAppInfoSettings = ::openAppInfoSettings
+                    initialOpenThreadAddress = initialOpenThread,
+                    onRequestPermissions = ::requestSupplementalPermissionsIfNeeded,
+                    onRequestDefaultSmsRole = ::requestDefaultSmsRole
                 )
             }
         }
@@ -82,14 +83,13 @@ class MainActivity : ComponentActivity() {
 
     private fun refreshSystemStates() {
         isDefaultSmsApp = SmsRepository.isDefaultSmsApp(this)
-        isNotificationShieldActive = SmsNotificationShieldService.isNotificationAccessGranted(this)
         hasSmsPermissions = ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.READ_SMS
         ) == PackageManager.PERMISSION_GRANTED
     }
 
-    private fun requestSmsAndNotificationPermissions() {
+    private fun requestSupplementalPermissionsIfNeeded() {
         val perms = buildList {
             add(Manifest.permission.READ_SMS)
             add(Manifest.permission.RECEIVE_SMS)
@@ -100,21 +100,6 @@ class MainActivity : ComponentActivity() {
             }
         }.toTypedArray()
         permissionsLauncher.launch(perms)
-    }
-
-    private fun openNotificationListenerSettings() {
-        runCatching {
-            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
-        }
-    }
-
-    private fun openAppInfoSettings() {
-        runCatching {
-            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.fromParts("package", packageName, null)
-            }
-            startActivity(intent)
-        }
     }
 
     private fun requestDefaultSmsRole() {
