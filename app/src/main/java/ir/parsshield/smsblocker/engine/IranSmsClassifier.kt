@@ -202,7 +202,7 @@ object IranSmsClassifier {
         filterMode: FilterMode = FilterMode.ALLOW_OTP_AND_BANK,
         customRules: List<CustomRule> = emptyList(),
         neverBlockOtpEvenFromBlocked: Boolean = true,
-        zeroToleranceCommercialPanels: Boolean = true
+        zeroToleranceCommercialPanels: Boolean = false
     ): ClassificationResult {
         val normalized = TextNormalizer.normalizeSmsText(body)
         val senderInfo = SenderAnalyzer.analyze(sender, isSavedContact)

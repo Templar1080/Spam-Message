@@ -18,7 +18,7 @@ private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(na
 data class ShieldSettings(
     val shieldEnabled: Boolean = true,
     val filterMode: FilterMode = FilterMode.ALLOW_OTP_AND_BANK,
-    val zeroToleranceCommercialPanels: Boolean = true,
+    val zeroToleranceCommercialPanels: Boolean = false,
     val dropSpamCompletely: Boolean = false,
     val neverBlockOtpEvenFromBlocked: Boolean = true,
     val autoCopyOtpToClipboard: Boolean = true,
@@ -32,7 +32,7 @@ class PreferencesRepository(private val context: Context) {
     private object Keys {
         val SHIELD_ENABLED = booleanPreferencesKey("shield_enabled")
         val FILTER_MODE = stringPreferencesKey("filter_mode")
-        val ZERO_TOLERANCE_PANELS = booleanPreferencesKey("zero_tolerance_panels")
+        val ZERO_TOLERANCE_PANELS = booleanPreferencesKey("zero_tolerance_panels_v2")
         val DROP_SPAM_COMPLETELY = booleanPreferencesKey("drop_spam_completely")
         val NEVER_BLOCK_OTP = booleanPreferencesKey("never_block_otp")
         val AUTO_COPY_OTP = booleanPreferencesKey("auto_copy_otp")
@@ -48,7 +48,7 @@ class PreferencesRepository(private val context: Context) {
         ShieldSettings(
             shieldEnabled = prefs[Keys.SHIELD_ENABLED] ?: true,
             filterMode = filterMode,
-            zeroToleranceCommercialPanels = prefs[Keys.ZERO_TOLERANCE_PANELS] ?: true,
+            zeroToleranceCommercialPanels = prefs[Keys.ZERO_TOLERANCE_PANELS] ?: false,
             dropSpamCompletely = prefs[Keys.DROP_SPAM_COMPLETELY] ?: false,
             neverBlockOtpEvenFromBlocked = prefs[Keys.NEVER_BLOCK_OTP] ?: true,
             autoCopyOtpToClipboard = prefs[Keys.AUTO_COPY_OTP] ?: true,

@@ -10,6 +10,7 @@ import android.provider.Telephony
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import ir.parsshield.smsblocker.ParsShieldApp
 import ir.parsshield.smsblocker.data.SmsRepository
 import ir.parsshield.smsblocker.engine.IranSmsClassifier
@@ -20,18 +21,14 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * Samsung One UI / Xiaomi / Google Messages Zero-Notification Shield.
+ * Samsung One UI / Xiaomi / Google Messages Notification Shield (v2.2.1).
  *
- * Why Samsung One UI needed this exact hybrid engine:
- *  - On Samsung One UI, Android locks the master "Allow notifications" switch of the Default SMS
- *    app to ON, AND restricts sideloaded SMS_RECEIVED broadcasts under Auto Blocker.
- *  - However, Samsung allows setting Samsung/Google Messages to "Silent (بی‌صدا)" + no Pop-up!
- *  - When Samsung Messages is set to Silent:
- *      1. Incoming Ad/Spam -> Samsung makes 0 sound & 0 pop-up, and this service cancels the
- *         silent notification in <1ms in pure RAM -> ZERO notifications anywhere!
- *      2. Incoming OTP / رمز پویا / Bank / Personal -> This service cancels Samsung's silent card
- *         and immediately posts ParsShield's loud Alerting Notification (with 1-Tap Copy OTP and
- *         Samsung's original contentIntent so tapping opens the chat inside Samsung Messages!).
+ * STRICT SAFETY INVARIANTS:
+ *  1. NEVER touches notifications from non-SMS apps (WhatsApp, Telegram, Instagram, System, etc.).
+ *  2. NEVER cancels FLAG_GROUP_SUMMARY or multi-thread InboxStyle summary notifications (because
+ *     canceling a group summary on Android AOSP cascades and closes ALL child notifications!).
+ *  3. NEVER calls cancelNotification() on allowed messages (Personal, OTP, Bank, Service).
+ *     cancelNotification(sbn.key) is ONLY called when fastEval.shouldBlock == true!
  */
 class SmsNotificationShieldService : NotificationListenerService() {
 
@@ -41,12 +38,13 @@ class SmsNotificationShieldService : NotificationListenerService() {
         if (sbn == null) return
         val pkg = sbn.packageName ?: return
 
-        // Never intercept ParsShield's own notifications
+        // 1. Never touch ParsShield's own notifications
         if (pkg == packageName) return
 
-        // If ParsShield IS the Default SMS App, SmsDeliverReceiver handles SMS at the radio layer
+        // 2. If ParsShield is Default SMS App, SmsDeliverReceiver handles SMS at the radio layer
         if (SmsRepository.isDefaultSmsApp(this)) return
 
+        // 3. Strictly inspect ONLY the user's SMS app
         val defaultSmsPkg = Telephony.Sms.getDefaultSmsPackage(this)
         val isSmsApp = pkg == defaultSmsPkg || pkg in KNOWN_SMS_PACKAGES
         if (!isSmsApp) return
@@ -54,11 +52,11 @@ class SmsNotificationShieldService : NotificationListenerService() {
         val notification = sbn.notification ?: return
         if ((notification.flags and Notification.FLAG_ONGOING_EVENT) != 0) return
 
-        // If this is a group summary ("2 new messages"), clean it up if no real child cards remain
-        if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) {
-            cleanupOrphanedGroupSummaries(pkg)
-            return
-        }
+        // 4. NEVER cancel or classify group summary / InboxStyle multi-thread summary notifications!
+        // Canceling a summary notification on Samsung/Android closes ALL unread SMS notifications!
+        if ((notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
+        val template = notification.extras?.getString(Notification.EXTRA_TEMPLATE)
+        if (template == "android.app.Notification\$InboxStyle") return
 
         val extracted = extractSmsFromNotification(notification) ?: return
         val (senderTitle, fullBody) = extracted
@@ -68,8 +66,6 @@ class SmsNotificationShieldService : NotificationListenerService() {
         val settings = app.cachedSettings
         if (!settings.shieldEnabled) return
 
-        // FAST SYNCHRONOUS (<0.8ms) RAM CLASSIFICATION:
-        // Cancels spam notifications BEFORE any coroutine hop or disk I/O!
         val isKnownContact = app.smsRepository.isKnownContactByNumberOrName(senderTitle)
         val fastEval = IranSmsClassifier.classify(
             sender = senderTitle,
@@ -81,10 +77,9 @@ class SmsNotificationShieldService : NotificationListenerService() {
             zeroToleranceCommercialPanels = settings.zeroToleranceCommercialPanels
         )
 
+        // ONLY SPAM / AD / PHISHING IS EVER CANCELED!
         if (fastEval.shouldBlock) {
-            // ERASE AD NOTIFICATION IMMEDIATELY (<1ms) + erase empty group summary!
             runCatching { cancelNotification(sbn.key) }
-            cleanupOrphanedGroupSummaries(pkg)
 
             serviceScope.launch {
                 app.smsRepository.processIncomingSms(
@@ -96,8 +91,8 @@ class SmsNotificationShieldService : NotificationListenerService() {
             return
         }
 
-        // ALLOWED MESSAGE (OTP, رمز پویا, Bank, Service, or Personal):
-        // Check whether the user set Samsung/Google Messages to "Silent" (IMPORTANCE_LOW or lower)
+        // ALLOWED MESSAGE (Personal, OTP, رمز پویا, Bank, Service):
+        // NEVER cancel sbn.key! Leave Samsung Messages' own notification 100% intact!
         val ranking = Ranking()
         val hasRanking = runCatching { currentRanking?.getRanking(sbn.key, ranking) == true }
             .getOrDefault(false)
@@ -115,28 +110,20 @@ class SmsNotificationShieldService : NotificationListenerService() {
                 timestamp = sbn.postTime
             )
             if (outcome.wasDuplicate || outcome.isBlocked || outcome.entity == null) {
-                if (stockAppIsSilent) {
-                    runCatching { cancelNotification(sbn.key) }
-                    cleanupOrphanedGroupSummaries(pkg)
-                }
                 return@launch
             }
 
-            if (stockAppIsSilent) {
-                // Replace Samsung's silent card with ParsShield's loud + pop-up alert (preserving
-                // Samsung's exact click intent so tapping opens Samsung Messages!)
-                runCatching { cancelNotification(sbn.key) }
-                cleanupOrphanedGroupSummaries(pkg)
-                NotificationHelper.showAllowedSmsNotification(
-                    context = this@SmsNotificationShieldService,
-                    entity = outcome.entity,
-                    openInStockSmsApp = true,
-                    originalContentIntent = originalIntent
-                )
-            } else if (outcome.entity.category == SmsCategory.OTP && !outcome.entity.otpCode.isNullOrBlank()) {
-                // Stock app already rang, so replace/post with 1-tap Copy OTP button
-                runCatching { cancelNotification(sbn.key) }
-                cleanupOrphanedGroupSummaries(pkg)
+            val canPostParsShieldNotif = NotificationManagerCompat
+                .from(this@SmsNotificationShieldService)
+                .areNotificationsEnabled()
+
+            if (!canPostParsShieldNotif) return@launch
+
+            // If the user set Samsung Messages to Silent, ring & pop up via ParsShield for allowed SMS!
+            // Or if it's an OTP, show the 1-Tap "Copy OTP" action banner alongside it.
+            if (stockAppIsSilent ||
+                (outcome.entity.category == SmsCategory.OTP && !outcome.entity.otpCode.isNullOrBlank())
+            ) {
                 NotificationHelper.showAllowedSmsNotification(
                     context = this@SmsNotificationShieldService,
                     entity = outcome.entity,
@@ -147,62 +134,61 @@ class SmsNotificationShieldService : NotificationListenerService() {
         }
     }
 
-    private fun cleanupOrphanedGroupSummaries(smsPkg: String) {
-        runCatching {
-            val activeForPkg = activeNotifications?.filter { it.packageName == smsPkg }.orEmpty()
-            val hasRealChild = activeForPkg.any {
-                (it.notification.flags and Notification.FLAG_GROUP_SUMMARY) == 0 &&
-                    (it.notification.flags and Notification.FLAG_ONGOING_EVENT) == 0
-            }
-            if (!hasRealChild) {
-                activeForPkg
-                    .filter { (it.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0 }
-                    .forEach { summary -> cancelNotification(summary.key) }
-            }
-        }
-    }
-
-    /**
-     * Extracts the newest incoming SMS (sender + full body) across Samsung One UI Messages,
-     * Google Messages (MessagingStyle), and Xiaomi/AOSP notifications, safely handling SpannableStrings.
-     */
     private fun extractSmsFromNotification(notification: Notification): Pair<String, String>? {
-        // 1. MessagingStyle (used by Samsung Messages & Google Messages on Android 8–15)
+        val extras: Bundle = notification.extras ?: return null
+
+        // Multi-line summary notification ("3 new messages") — never cancel!
+        if (extras.containsKey(Notification.EXTRA_TEXT_LINES)) return null
+
+        // 1. MessagingStyle (Samsung Messages & Google Messages single-conversation notification)
         runCatching {
             val style = NotificationCompat.MessagingStyle.extractMessagingStyleFromNotification(notification)
-            val newest = style?.messages?.lastOrNull()
-            if (newest != null) {
-                val msgText = newest.text?.toString()?.trim().orEmpty()
-                val msgSender = newest.person?.name?.toString()?.trim()
-                    ?.takeIf { it.isNotEmpty() }
-                    ?: style.conversationTitle?.toString()?.trim()
-                    ?: notification.extras?.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
-                    ?: "Unknown"
-                if (msgText.isNotEmpty()) {
-                    return msgSender to msgText
+            if (style != null) {
+                val distinctSenders = style.messages
+                    .mapNotNull { it.person?.name?.toString()?.trim()?.takeIf { s -> s.isNotEmpty() } }
+                    .distinct()
+                if (distinctSenders.size > 1) return null
+
+                val newest = style.messages.lastOrNull()
+                if (newest != null) {
+                    val msgText = newest.text?.toString()?.trim().orEmpty()
+                    val msgSender = newest.person?.name?.toString()?.trim()
+                        ?.takeIf { it.isNotEmpty() }
+                        ?: style.conversationTitle?.toString()?.trim()
+                        ?: extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
+                        ?: "Unknown"
+                    if (msgText.isNotEmpty()) {
+                        return msgSender to msgText
+                    }
                 }
             }
         }
 
-        val extras: Bundle = notification.extras ?: return null
-
-        // 2. Raw EXTRA_MESSAGES bundle array fallback (for custom OEM MessagingStyle subclasses)
+        // 2. Raw EXTRA_MESSAGES bundle array fallback
         runCatching {
             @Suppress("DEPRECATION")
             val rawArr = extras.getParcelableArray(Notification.EXTRA_MESSAGES)
-            val lastBundle = rawArr?.lastOrNull() as? Bundle
-            if (lastBundle != null) {
-                val text = lastBundle.getCharSequence("text")?.toString()?.trim().orEmpty()
-                val sender = lastBundle.getCharSequence("sender")?.toString()?.trim()
-                    ?: extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
-                    ?: "Unknown"
-                if (text.isNotEmpty()) {
-                    return sender to text
+            if (rawArr != null && rawArr.isNotEmpty()) {
+                val bundles = rawArr.mapNotNull { it as? Bundle }
+                val senders = bundles
+                    .mapNotNull { it.getCharSequence("sender")?.toString()?.trim()?.takeIf { s -> s.isNotEmpty() } }
+                    .distinct()
+                if (senders.size > 1) return null
+
+                val lastBundle = bundles.lastOrNull()
+                if (lastBundle != null) {
+                    val text = lastBundle.getCharSequence("text")?.toString()?.trim().orEmpty()
+                    val sender = lastBundle.getCharSequence("sender")?.toString()?.trim()
+                        ?: extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
+                        ?: "Unknown"
+                    if (text.isNotEmpty()) {
+                        return sender to text
+                    }
                 }
             }
         }
 
-        // 3. Standard BigText / Text CharSequence fallback (safe for SpannableString!)
+        // 3. Standard single-notification BigText / Text fallback
         val sender = extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE)?.toString()?.trim()
             ?.takeIf { it.isNotEmpty() }
             ?: extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()

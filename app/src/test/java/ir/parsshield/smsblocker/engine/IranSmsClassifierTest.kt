@@ -79,13 +79,27 @@ class IranSmsClassifierTest {
     }
 
     @Test
-    fun `blocks sneaky commercial ad from 5000 panel even without discount or laghv11 words`() {
+    fun `blocks sneaky commercial ad when zeroToleranceCommercialPanels is enabled and allows normal personal or bank notice by default`() {
         val sneaky = IranSmsClassifier.classify(
             sender = "98500012345",
-            body = "گروه صنعتی پارس استیل، تولید کننده انواع ورق و پروفیل صنعتی در تهران. تلفن: ۸۸۷۷۶۶۵۵"
+            body = "گروه صنعتی پارس استیل، تولید کننده انواع ورق و پروفیل صنعتی در تهران. تلفن: ۸۸۷۷۶۶۵۵",
+            zeroToleranceCommercialPanels = true
         )
         assertEquals(SmsCategory.SPAM_AD, sneaky.category)
         assertTrue(sneaky.shouldBlock)
+
+        val personalChat = IranSmsClassifier.classify(
+            sender = "09123456789",
+            body = "سلام عزیز خوبی؟ ساعت ۶ میرم سمت خونه"
+        )
+        assertEquals(SmsCategory.PERSONAL, personalChat.category)
+        assertFalse(personalChat.shouldBlock)
+
+        val bankLoginNotice = IranSmsClassifier.classify(
+            sender = "98300094",
+            body = "مشتری گرامی، ورود موفق به همراه بانک ملت در تاریخ ۱۴۰۵/۰۹/۰۵ ثبت شد."
+        )
+        assertFalse(bankLoginNotice.shouldBlock)
     }
 
     @Test

@@ -4,6 +4,15 @@ All notable architectural updates and releases for **ParsShield** are documented
 
 ---
 
+## [v2.2.1] — Fix Group-Summary Cascade & Protect All Non-Spam Notifications
+### Fixed
+- **Never Cancel Allowed or Group-Summary Notifications (`SmsNotificationShieldService`)**:
+  - Removed `cancelNotification` on `FLAG_GROUP_SUMMARY` / `InboxStyle` / multi-sender bundled notifications (canceling a group summary in Android AOSP triggers `cancelGroupChildrenLocked`, which closed all unread SMS notifications at once).
+  - Removed `cancelNotification` from all `shouldBlock == false` code paths so legitimate Personal, OTP, Bank, and Service notifications from Samsung/Google Messages are **never** closed.
+  - Changed `zeroToleranceCommercialPanels` default to `false` (`zero_tolerance_panels_v2`) so non-promotional shortcode alerts without spam indicators are never falsely blocked unless the user explicitly enables aggressive panel blocking.
+
+---
+
 ## [v2.2.0] — Samsung One UI Zero-Notification Shield & BiDi Fix
 ### Added
 - **Samsung One UI Silent + Instant Cancel Hybrid Engine (`SmsNotificationShieldService`)**:
